@@ -83,7 +83,7 @@ interface CaseStore {
     serviceType: string;
   }) => void;
   setResult: (result: CalculationResult) => void;
-  appendNarrative: (chunk: string) => void;
+  setNarrative: (text: string) => void;
   setActiveScenario: (scenario: Scenario) => void;
   setAuditEntries: (entries: AuditEntry[]) => void;
   reset: () => void;
@@ -101,8 +101,7 @@ export const useCaseStore = create<CaseStore>((set) => ({
 
   setCaseInfo: (info) => set(info),
   setResult: (result) => set({ calculationResult: result }),
-  appendNarrative: (chunk) =>
-    set((state) => ({ narrative: state.narrative + chunk })),
+  setNarrative: (text) => set({ narrative: text }),
   setActiveScenario: (scenario) => set({ activeScenario: scenario }),
   setAuditEntries: (entries) => set({ auditEntries: entries }),
   reset: () =>

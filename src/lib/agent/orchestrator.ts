@@ -1,89 +1,78 @@
 /**
- * CPROIOrchestrator — TypeScript port of the agentic ROI pipeline.
+ * CPROIOrchestrator — Agentic ROI pipeline using Vercel AI SDK streamText().
  *
- * Uses the Claude Agent SDK's `query()` async generator with custom MCP tools
- * (Valyu, Firecrawl, CalculationEngine) and built-in tools (WebSearch, WebFetch)
- * to run a methodology-driven pipeline. Emits SSE events via callback so the
- * Next.js API route can stream progress to the frontend.
+ * Replaces the manual tool-use loop with streamText() + stopWhen(stepCountIs(20)).
+ * Emits custom data parts (data-activity, data-pipeline) via createUIMessageStream
+ * so the frontend can show real-time progress alongside the streamed LLM output.
  */
 
-import {
-  query,
-  type HookInput,
-  type HookJSONOutput,
-  type SDKMessage,
-  type SDKAssistantMessage,
-  type SDKResultMessage,
-  type PreToolUseHookInput,
-  type PostToolUseHookInput,
-} from "@anthropic-ai/claude-agent-sdk";
-import { createCproiToolServer } from "./tools";
+import { streamText, stepCountIs, createUIMessageStream } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { tools } from "./tools";
 
 // ---------------------------------------------------------------------------
-// SSE Event Types (must match frontend expectations)
+// Custom data part types (must match frontend expectations)
 // ---------------------------------------------------------------------------
 
-export type PipelineEventType =
-  | "pipeline_started"
-  | "pipeline_completed"
-  | "pipeline_error"
-  | "company_identified"
-  | "data_fetch_started"
-  | "data_fetch_completed"
-  | "benchmark_search_started"
-  | "benchmark_found"
-  | "calculation_started"
-  | "calculation_completed"
-  | "narrative_chunk"
-  | "narrative_completed"
-  | "agent_thinking"
-  | "tool_call_started"
-  | "tool_call_completed";
+export interface ActivityDataPart {
+  type: "data-activity";
+  id: string;
+  data: {
+    activityType: "tool_start" | "tool_complete" | "milestone" | "error";
+    title: string;
+    tool?: string;
+    status: "running" | "done" | "error";
+  };
+}
 
-export interface SSEEvent {
-  type: PipelineEventType;
-  timestamp: string;
-  [key: string]: unknown;
+export interface PipelineDataPart {
+  type: "data-pipeline";
+  id: string;
+  data: {
+    stepId: string;
+    status: "active" | "completed";
+    message?: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Tool-to-Event Mapping (mirrors Python TOOL_EVENT_MAP)
+// Tool-to-Step Mapping (maps tool names to pipeline step IDs for frontend)
 // ---------------------------------------------------------------------------
 
-const TOOL_EVENT_MAP: Record<string, [PipelineEventType, PipelineEventType]> = {
-  "mcp__cproi-tools__load_methodology": ["pipeline_started", "company_identified"],
-  "mcp__cproi-tools__fetch_financials": ["data_fetch_started", "data_fetch_completed"],
-  "mcp__cproi-tools__scrape_company": ["data_fetch_started", "data_fetch_completed"],
-  WebSearch: ["benchmark_search_started", "benchmark_found"],
-  WebFetch: ["benchmark_search_started", "benchmark_found"],
-  "mcp__cproi-tools__run_calculation": ["calculation_started", "calculation_completed"],
+const TOOL_STEP_MAP: Record<string, string> = {
+  load_methodology: "classify",
+  fetch_financials: "financials",
+  scrape_company: "financials",
+  web_search: "benchmarks",
+  run_calculation: "calculate",
 };
 
 // ---------------------------------------------------------------------------
-// Tool input summary helper (for activity feed)
+// Human-readable tool summaries
 // ---------------------------------------------------------------------------
 
-function summarizeToolInput(
+function summarizeToolCall(
   toolName: string,
-  toolInput: Record<string, unknown>,
+  args: Record<string, unknown>,
 ): string {
-  if (toolName.includes("fetch_financials"))
-    return `Fetching financial data for ${(toolInput.company_name as string) ?? "company"}`;
-  if (toolName.includes("scrape_company"))
-    return `Scraping company data for ${(toolInput.company_name as string) ?? "company"}`;
-  if (toolName.includes("run_calculation"))
-    return "Running ROI calculation engine";
-  if (toolName.includes("load_methodology"))
-    return `Loading methodology for ${(toolInput.service_type as string) ?? "service"}`;
-  if (toolName === "WebSearch")
-    return `Searching: ${String(toolInput.query ?? "").slice(0, 80)}`;
-  if (toolName === "WebFetch")
-    return `Reading: ${String(toolInput.url ?? "").slice(0, 80)}`;
-  return `Using ${toolName}`;
+  switch (toolName) {
+    case "fetch_financials":
+      return `Fetching financial data for ${(args.company_name as string) ?? "company"}`;
+    case "scrape_company":
+      return `Scraping company data for ${(args.company_name as string) ?? "company"}`;
+    case "run_calculation":
+      return "Running ROI calculation engine";
+    case "load_methodology":
+      return `Loading methodology for ${(args.service_type as string) ?? "service"}`;
+    case "web_search":
+      return "Searching the web";
+    default:
+      return `Using ${toolName}`;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// System Prompt (ported from Python, with dynamic date injection)
+// System Prompt
 // ---------------------------------------------------------------------------
 
 function getSystemPrompt(): string {
@@ -106,9 +95,8 @@ no recent data exists.
 - **fetch_financials** — Fetches company-specific financial data from SEC filings (Valyu) or
   Crunchbase (Firecrawl). Returns populated fields and a list of gaps.
 - **scrape_company** — Fallback for private companies if fetch_financials returns no data.
-- **WebSearch** — Built-in. Search the web for industry benchmark data to fill gaps.
+- **web_search** — Search the web for industry benchmark data to fill gaps.
   Use specific queries like "retail average conversion rate ${year} Baymard Institute".
-- **WebFetch** — Built-in. Fetch and read a specific URL found via WebSearch.
 - **run_calculation** — Runs the ROI calculation engine against gathered data.
   Pass company_data as a nested object with company_name, industry, and fields.
   Each field should be an object with value, confidence_tier, and confidence_score.
@@ -123,7 +111,7 @@ no recent data exists.
    Review what fields came back and what gaps remain.
 
 3. **Fill gaps with benchmark research** — For each missing field that a KPI needs,
-   use WebSearch to find real industry benchmark data. Search for specific, recent,
+   use web_search to find real industry benchmark data. Search for specific, recent,
    authoritative sources (Baymard, McKinsey, Forrester, Statista, etc.).
    When you find a value, note the source URL and date.
 
@@ -146,7 +134,7 @@ no recent data exists.
 ## Key Principles
 
 - The methodology config drives what data to gather — never hardcode field lists.
-- Every number must trace to a source. When using WebSearch benchmarks, cite the URL.
+- Every number must trace to a source. When using web_search benchmarks, cite the URL.
 - Prefer company-reported data over benchmarks. Use benchmarks only for gaps.
 - If a field can't be found anywhere, skip the KPI gracefully — don't fabricate data.
 - Think step by step. After each tool call, reason about what you learned and what to do next.
@@ -154,7 +142,7 @@ no recent data exists.
 }
 
 // ---------------------------------------------------------------------------
-// Orchestrator result interface
+// Orchestrator result (for Supabase persistence)
 // ---------------------------------------------------------------------------
 
 export interface OrchestratorResult {
@@ -164,128 +152,30 @@ export interface OrchestratorResult {
 }
 
 // ---------------------------------------------------------------------------
-// Main pipeline runner
+// Main pipeline — returns a UIMessageStream + a result promise
 // ---------------------------------------------------------------------------
 
-export async function runPipeline(params: {
+export function createPipelineStream(params: {
   companyName: string;
   industry: string;
   serviceType: string;
   caseId: string;
-  onEvent: (event: SSEEvent) => void;
-}): Promise<OrchestratorResult> {
-  const { companyName, industry, serviceType, caseId, onEvent } = params;
+}): {
+  stream: ReadableStream;
+  resultPromise: Promise<OrchestratorResult>;
+} {
+  const { companyName, industry, serviceType, caseId } = params;
 
-  // Helper to emit SSE events
-  function emit(type: PipelineEventType, data: Record<string, unknown> = {}): void {
-    onEvent({
-      type,
-      timestamp: new Date().toISOString(),
-      ...data,
-    });
-  }
-
-  // Mutable state captured by hooks and the message loop
-  let scenarios: Record<string, unknown> = {};
-  const narrativeChunks: string[] = [];
-
-  // Build MCP server with custom tools
-  const cproiServer = createCproiToolServer();
-
-  // -----------------------------------------------------------------------
-  // Pre-tool hook: emit tool_call_started + specific pipeline event
-  // -----------------------------------------------------------------------
-  async function preToolHook(
-    input: HookInput,
-    toolUseId: string | undefined,
-    _options: { signal: AbortSignal },
-  ): Promise<HookJSONOutput> {
-    const hookInput = input as PreToolUseHookInput;
-    const toolName = hookInput.tool_name;
-    const toolInput = (hookInput.tool_input ?? {}) as Record<string, unknown>;
-
-    // Emit generic tool_call_started (powers the activity feed)
-    emit("tool_call_started", {
-      tool: toolName,
-      tool_use_id: toolUseId ?? null,
-      input_summary: summarizeToolInput(toolName, toolInput),
-      case_id: caseId,
-    });
-
-    // Emit specific pipeline step event (e.g. data_fetch_started)
-    if (toolName in TOOL_EVENT_MAP) {
-      const [startedEvent] = TOOL_EVENT_MAP[toolName];
-      emit(startedEvent, {
-        tool: toolName,
-        case_id: caseId,
-      });
-    }
-
-    return {};
-  }
-
-  // -----------------------------------------------------------------------
-  // Post-tool hook: emit specific completed event + tool_call_completed,
-  //                 capture calculation result
-  // -----------------------------------------------------------------------
-  async function postToolHook(
-    input: HookInput,
-    toolUseId: string | undefined,
-    _options: { signal: AbortSignal },
-  ): Promise<HookJSONOutput> {
-    const hookInput = input as PostToolUseHookInput;
-    const toolName = hookInput.tool_name;
-
-    // Emit specific pipeline step completed event
-    if (toolName in TOOL_EVENT_MAP) {
-      const [, completedEvent] = TOOL_EVENT_MAP[toolName];
-      emit(completedEvent, {
-        tool: toolName,
-        case_id: caseId,
-      });
-    }
-
-    // Emit generic tool_call_completed
-    emit("tool_call_completed", {
-      tool: toolName,
-      tool_use_id: toolUseId ?? null,
-      case_id: caseId,
-    });
-
-    // Capture calculation result from run_calculation tool output
-    if (toolName === "mcp__cproi-tools__run_calculation") {
-      const toolResult = hookInput.tool_response;
-      try {
-        let parsed: Record<string, unknown> | undefined;
-        if (typeof toolResult === "string") {
-          parsed = JSON.parse(toolResult) as Record<string, unknown>;
-        } else if (typeof toolResult === "object" && toolResult !== null) {
-          parsed = toolResult as Record<string, unknown>;
-        }
-        if (parsed && "scenarios" in parsed) {
-          scenarios = parsed;
-        }
-      } catch {
-        // Ignore parse failures — the agent may still produce the result via text
-      }
-    }
-
-    return {};
-  }
-
-  // -----------------------------------------------------------------------
-  // Emit pipeline_started
-  // -----------------------------------------------------------------------
-  emit("pipeline_started", {
-    company_name: companyName,
-    industry,
-    service_type: serviceType,
+  // Deferred promise — resolved when stream completes, rejected on error.
+  // The route awaits this to persist results to Supabase.
+  // Using manual pattern for Node 20 compatibility (Promise.withResolvers requires Node 22+).
+  let resolveResult: (value: OrchestratorResult) => void;
+  let rejectResult: (reason: Error) => void;
+  const resultPromise = new Promise<OrchestratorResult>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
   });
 
-  // Build the user prompt with the system prompt embedded.
-  // The SDK's query() function does not have a separate systemPrompt option;
-  // instead, we prepend the system instructions to the user prompt.
-  const systemPrompt = getSystemPrompt();
   const userTask =
     `Analyze the ROI case for ${companyName} in the ${industry} industry ` +
     `using the ${serviceType} methodology.\n\n` +
@@ -293,134 +183,214 @@ export async function runPipeline(params: {
     `data, fill gaps with web search benchmarks, run the calculation, and ` +
     `generate the SCR narrative. Think carefully at each step.`;
 
-  const prompt = `${systemPrompt}\n---\n\n${userTask}`;
+  let scenarios: Record<string, unknown> = {};
+  let benchmarksStarted = false;
 
-  // -----------------------------------------------------------------------
-  // Run the agent loop
-  // -----------------------------------------------------------------------
-  try {
-    const agentStream = query({
-      prompt,
-      options: {
-        mcpServers: { "cproi-tools": cproiServer },
-        allowedTools: [
-          "mcp__cproi-tools__load_methodology",
-          "mcp__cproi-tools__fetch_financials",
-          "mcp__cproi-tools__scrape_company",
-          "mcp__cproi-tools__run_calculation",
-          "WebSearch",
-          "WebFetch",
-        ],
-        tools: [
-          "WebSearch",
-          "WebFetch",
-        ],
-        hooks: {
-          PreToolUse: [{ hooks: [preToolHook] }],
-          PostToolUse: [{ hooks: [postToolHook] }],
-        },
-        maxTurns: 20,
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        persistSession: false,
-        env: {
-          ...process.env as Record<string, string | undefined>,
-          CLAUDE_AGENT_SDK_CLIENT_APP: "cproi/1.0.0",
-        },
-      },
-    });
+  const stream = createUIMessageStream({
+    execute: async ({ writer }) => {
+      try {
+        // Emit case info so the frontend can show "Analyzing Nike"
+        writer.write({
+          type: "data-caseinfo",
+          id: "case-info",
+          data: { companyName, industry, serviceType, caseId },
+        });
 
-    for await (const message of agentStream) {
-      processMessage(message, caseId, narrativeChunks, emit);
-    }
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown pipeline error";
-    emit("pipeline_error", {
-      error: errorMessage,
-      case_id: caseId,
-    });
-    throw error;
-  }
+        // Emit pipeline started
+        writer.write({
+          type: "data-activity",
+          id: "pipeline-started",
+          data: {
+            activityType: "milestone",
+            title: "Analysis pipeline started",
+            status: "running",
+          },
+        } as ActivityDataPart);
 
-  // -----------------------------------------------------------------------
-  // Emit completion events
-  // -----------------------------------------------------------------------
-  const narrative = narrativeChunks.join("\n");
-  if (narrative) {
-    emit("narrative_completed", { narrative });
-  }
+        writer.write({
+          type: "data-pipeline",
+          id: "step-classify",
+          data: { stepId: "classify", status: "active" },
+        } as PipelineDataPart);
 
-  emit("pipeline_completed", {
-    case_id: caseId,
-    status: "completed",
-    result: Object.keys(scenarios).length > 0 ? scenarios : null,
+        const result = streamText({
+          model: anthropic("claude-sonnet-4-5-20250929"),
+          system: getSystemPrompt(),
+          messages: [{ role: "user", content: userTask }],
+          tools: {
+            ...tools,
+            web_search: anthropic.tools.webSearch_20250305({ maxUses: 10 }),
+          },
+          stopWhen: stepCountIs(20),
+          maxOutputTokens: 8192,
+
+          experimental_onToolCallStart({ toolCall }) {
+            const toolName = toolCall.toolName;
+            const args = (toolCall.input ?? {}) as Record<string, unknown>;
+            const stepId = TOOL_STEP_MAP[toolName];
+            const toolCallId = `tool-${toolName}-${Date.now()}`;
+
+            // Emit tool start activity
+            writer.write({
+              type: "data-activity",
+              id: toolCallId,
+              data: {
+                activityType: "tool_start",
+                title: summarizeToolCall(toolName, args),
+                tool: toolName,
+                status: "running",
+              },
+            } as ActivityDataPart);
+
+            // Update pipeline step
+            if (stepId) {
+              writer.write({
+                type: "data-pipeline",
+                id: `step-${stepId}`,
+                data: { stepId, status: "active" },
+              } as PipelineDataPart);
+            }
+          },
+
+          // onStepFinish captures provider-managed tools (e.g. web_search)
+          // that don't fire experimental_onToolCallStart/Finish callbacks.
+          onStepFinish({ toolCalls }) {
+            for (const tc of toolCalls) {
+              if (tc.toolName === "web_search") {
+                // Mark benchmarks step active on first web_search
+                if (!benchmarksStarted) {
+                  benchmarksStarted = true;
+                  writer.write({
+                    type: "data-activity",
+                    id: `tool-web_search-${Date.now()}`,
+                    data: {
+                      activityType: "tool_start",
+                      title: "Searching the web",
+                      tool: "web_search",
+                      status: "running",
+                    },
+                  } as ActivityDataPart);
+
+                  writer.write({
+                    type: "data-pipeline",
+                    id: "step-benchmarks",
+                    data: { stepId: "benchmarks", status: "active" },
+                  } as PipelineDataPart);
+                }
+
+                writer.write({
+                  type: "data-activity",
+                  id: `tool-web_search-done-${Date.now()}`,
+                  data: {
+                    activityType: "tool_complete",
+                    title: "Completed: web search",
+                    tool: "web_search",
+                    status: "done",
+                  },
+                } as ActivityDataPart);
+
+                writer.write({
+                  type: "data-pipeline",
+                  id: "step-benchmarks",
+                  data: { stepId: "benchmarks", status: "completed" },
+                } as PipelineDataPart);
+              }
+            }
+          },
+
+          experimental_onToolCallFinish(event) {
+            const toolName = event.toolCall.toolName;
+            const stepId = TOOL_STEP_MAP[toolName];
+
+            // Emit tool complete activity
+            writer.write({
+              type: "data-activity",
+              id: `tool-${toolName}-done-${Date.now()}`,
+              data: {
+                activityType: "tool_complete",
+                title: `Completed: ${toolName}`,
+                tool: toolName,
+                status: "done",
+              },
+            } as ActivityDataPart);
+
+            // Update pipeline step to completed
+            if (stepId) {
+              writer.write({
+                type: "data-pipeline",
+                id: `step-${stepId}`,
+                data: { stepId, status: "completed" },
+              } as PipelineDataPart);
+            }
+
+            // Capture calculation results (last-write-wins if called multiple times)
+            if (toolName === "run_calculation" && event.success === true) {
+              const output = event.output;
+              if (
+                output &&
+                typeof output === "object" &&
+                "scenarios" in output
+              ) {
+                scenarios = output as Record<string, unknown>;
+              }
+            }
+          },
+        });
+
+        // Mark narrative step as active — the LLM is now generating text
+        writer.write({
+          type: "data-pipeline",
+          id: "step-narrative",
+          data: { stepId: "narrative", status: "active" },
+        } as PipelineDataPart);
+
+        // Merge the LLM stream into the UI stream
+        writer.merge(result.toUIMessageStream());
+
+        // Wait for the stream to complete, then resolve with results
+        const finalText = await result.text;
+
+        // Emit narrative step completed
+        writer.write({
+          type: "data-pipeline",
+          id: "step-narrative",
+          data: { stepId: "narrative", status: "completed" },
+        } as PipelineDataPart);
+
+        // Emit pipeline completed
+        writer.write({
+          type: "data-activity",
+          id: "pipeline-completed",
+          data: {
+            activityType: "milestone",
+            title: "Analysis complete",
+            status: "done",
+          },
+        } as ActivityDataPart);
+
+        resolveResult!({
+          scenarios,
+          narrative: finalText,
+          caseId,
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown pipeline error";
+
+        writer.write({
+          type: "data-activity",
+          id: "pipeline-error",
+          data: {
+            activityType: "error",
+            title: errorMessage,
+            status: "error",
+          },
+        } as ActivityDataPart);
+
+        rejectResult!(new Error(errorMessage));
+      }
+    },
   });
 
-  return {
-    scenarios,
-    narrative,
-    caseId,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Message processing helper
-// ---------------------------------------------------------------------------
-
-function processMessage(
-  message: SDKMessage,
-  caseId: string,
-  narrativeChunks: string[],
-  emit: (type: PipelineEventType, data?: Record<string, unknown>) => void,
-): void {
-  // Assistant messages contain text blocks (narrative/thinking) and tool_use blocks
-  if (message.type === "assistant") {
-    const assistantMsg = message as SDKAssistantMessage;
-    const content = assistantMsg.message?.content;
-    if (Array.isArray(content)) {
-      for (const block of content) {
-        if (block.type === "text") {
-          const text = (block as { type: "text"; text: string }).text;
-          narrativeChunks.push(text);
-          emit("agent_thinking", { text, case_id: caseId });
-          emit("narrative_chunk", { text, case_id: caseId });
-        }
-        // tool_use blocks are handled by the hooks; we just log here
-      }
-    }
-    return;
-  }
-
-  // Result messages signal pipeline end
-  if (message.type === "result") {
-    const resultMsg = message as SDKResultMessage;
-    if (resultMsg.subtype === "success") {
-      // The result text may contain the final narrative or calculation JSON
-      if ("result" in resultMsg && typeof resultMsg.result === "string") {
-        try {
-          const parsed = JSON.parse(resultMsg.result) as Record<string, unknown>;
-          if ("scenarios" in parsed) {
-            // Late capture — in case hooks missed it
-            emit("calculation_completed", {
-              case_id: caseId,
-              result: parsed,
-            });
-          }
-        } catch {
-          // Result is plain text, not JSON — that's fine
-        }
-      }
-    } else {
-      // Error result
-      emit("pipeline_error", {
-        error: `Agent stopped: ${resultMsg.subtype}`,
-        stop_reason: resultMsg.stop_reason ?? null,
-        case_id: caseId,
-      });
-    }
-    return;
-  }
-
-  // Other message types (stream_event, system, etc.) are ignored for now
+  return { stream, resultPromise };
 }

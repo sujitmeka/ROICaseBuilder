@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEventStream } from "../../../hooks/use-event-stream";
+import { usePipelineStream } from "../../../hooks/use-event-stream";
 import { useStreamStore } from "../../../stores/stream-store";
 import { useCaseStore } from "../../../stores/case-store";
 import { ActivityFeed } from "../../../components/streaming/ActivityFeed";
@@ -18,8 +18,8 @@ export default function CasePage() {
   const narrative = useCaseStore((s) => s.narrative);
   const companyName = useCaseStore((s) => s.companyName);
 
-  // Connect to SSE stream
-  useEventStream(caseId);
+  // Connect to AI SDK streaming pipeline
+  usePipelineStream(caseId);
 
   // If we have final results, show the full results view
   if (results) {

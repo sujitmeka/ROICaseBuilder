@@ -1,5 +1,5 @@
-import { z } from "zod/v4";
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+import { tool } from "ai";
+import { z } from "zod";
 import { supabase } from "../supabase";
 import { calculate } from "./calculation-engine";
 import type { CompanyData, DataPointInput, MethodologyConfig } from "./types";
@@ -10,21 +10,9 @@ import type { CompanyData, DataPointInput, MethodologyConfig } from "./types";
 
 const FETCH_TIMEOUT_MS = 30_000;
 
-function textResult(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
-}
-
 /**
  * Parse a numeric value from text. Uses `hint` to disambiguate when the text
  * contains both percentages and currency amounts (common in financial prose).
- *
- * Handles:
- *   "$51.2 billion"  -> 51_200_000_000
- *   "$340.5 million" -> 340_500_000
- *   "45.3%"          -> 0.453
- *   "-5.2%"          -> -0.052
- *   "N/A"            -> null
- *   "$1,234,567"     -> 1234567
  */
 function parseNumeric(raw: unknown, hint?: "currency" | "percentage"): number | null {
   if (raw === null || raw === undefined) return null;
@@ -34,14 +22,11 @@ function parseNumeric(raw: unknown, hint?: "currency" | "percentage"): number | 
     return null;
   }
 
-  // Use regex-based extraction (matches Python's re.search approach)
-  // Percentage: anchored regex like Python original
   const pctMatch = s.match(/(-?\d+\.?\d*)\s*%/);
   if (pctMatch && hint !== "currency") {
     return parseFloat(pctMatch[1]) / 100;
   }
 
-  // Dollar amounts with word multipliers: "$51.2 billion"
   const multipliers: Record<string, number> = {
     trillion: 1_000_000_000_000,
     billion: 1_000_000_000,
@@ -54,7 +39,6 @@ function parseNumeric(raw: unknown, hint?: "currency" | "percentage"): number | 
     return isNaN(value) ? null : value * multipliers[moneyMatch[2].toLowerCase()];
   }
 
-  // Plain number (possibly with commas or dollar sign)
   const plainMatch = s.match(/(-?\$?\d[\d,]*\.?\d*)/);
   if (plainMatch) {
     const cleaned = plainMatch[1].replace(/[$,]/g, "");
@@ -65,11 +49,6 @@ function parseNumeric(raw: unknown, hint?: "currency" | "percentage"): number | 
   return null;
 }
 
-/**
- * Generate a URL-safe slug from a company name.
- * NOTE: Crunchbase slugs don't always match simple slugification
- * (e.g. "JPMorgan Chase" -> "jpmorgan-chase-co"). This is a best-effort guess.
- */
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -78,11 +57,7 @@ function slugify(name: string): string {
     .replace(/\s+/g, "-");
 }
 
-/**
- * Load the active methodology for a service type from Supabase.
- * Shared by load_methodology tool and run_calculation tool.
- */
-async function loadActiveMethodology(serviceType: string): Promise<MethodologyConfig | null> {
+export async function loadActiveMethodology(serviceType: string): Promise<MethodologyConfig | null> {
   const { data, error } = await supabase
     .from("methodologies")
     .select("*")
@@ -98,26 +73,7 @@ async function loadActiveMethodology(serviceType: string): Promise<MethodologyCo
 }
 
 // ---------------------------------------------------------------------------
-// Tool 1: load_methodology
-// ---------------------------------------------------------------------------
-
-const loadMethodologyTool = tool(
-  "load_methodology",
-  "Load the active methodology config for a given service type from Supabase. Returns the full methodology JSON including KPI definitions, benchmark ranges, confidence discounts, and realization curve.",
-  {
-    service_type: z.string().describe("The service type to load methodology for, e.g. 'Experience Transformation & Design'"),
-  },
-  async (args) => {
-    const methodology = await loadActiveMethodology(args.service_type);
-    if (!methodology) {
-      return textResult({ error: `No active methodology found for service_type="${args.service_type}"` });
-    }
-    return textResult(methodology);
-  }
-);
-
-// ---------------------------------------------------------------------------
-// Tool 2: fetch_financials
+// Valyu query config
 // ---------------------------------------------------------------------------
 
 const VALYU_QUERIES: Record<string, { queryFn: (c: string) => string; hint: "currency" | "percentage" }> = {
@@ -154,54 +110,8 @@ async function queryValyu(query: string, apiKey: string): Promise<string | null>
   return JSON.stringify(json);
 }
 
-const fetchFinancialsTool = tool(
-  "fetch_financials",
-  "Fetch financial data for a public company from SEC filings via Valyu API. Queries revenue, income, margins, and growth rate in parallel. Returns a CompanyData object with confidence-scored fields.",
-  {
-    company_name: z.string().describe("The company name to look up, e.g. 'Nike'"),
-    industry: z.string().describe("The industry vertical, e.g. 'Retail/Apparel'"),
-  },
-  async (args) => {
-    const apiKey = process.env.VALYU_API_KEY;
-    if (!apiKey) {
-      return textResult({ error: "VALYU_API_KEY is not set" });
-    }
-
-    const fieldNames = Object.keys(VALYU_QUERIES);
-    const entries = fieldNames.map((f) => VALYU_QUERIES[f]);
-    const queryTexts = entries.map((e) => e.queryFn(args.company_name));
-
-    const settled = await Promise.allSettled(
-      queryTexts.map((q) => queryValyu(q, apiKey))
-    );
-
-    const fields: Record<string, DataPointInput> = {};
-    for (let i = 0; i < fieldNames.length; i++) {
-      const result = settled[i];
-      const rawValue = result.status === "fulfilled" ? result.value : null;
-      // TODO: confidence_score should factor in Valyu relevance_score
-      const parsed = parseNumeric(rawValue, entries[i].hint);
-      if (parsed !== null) {
-        fields[fieldNames[i]] = {
-          value: parsed,
-          confidence_tier: "company_reported",
-          confidence_score: 0.9,
-        };
-      }
-    }
-
-    const companyData: CompanyData = {
-      company_name: args.company_name,
-      industry: args.industry,
-      fields,
-    };
-
-    return textResult(companyData);
-  }
-);
-
 // ---------------------------------------------------------------------------
-// Tool 3: scrape_company
+// Crunchbase extraction shape
 // ---------------------------------------------------------------------------
 
 interface CrunchbaseExtraction {
@@ -214,152 +124,196 @@ interface CrunchbaseExtraction {
   estimated_valuation?: string;
 }
 
-const scrapeCompanyTool = tool(
-  "scrape_company",
-  "Scrape company data from Crunchbase via Firecrawl for private/pre-IPO companies. Extracts funding, estimated revenue, headcount, and valuation. Returns a CompanyData object with estimated confidence scores.",
-  {
-    company_name: z.string().describe("The company name to look up on Crunchbase"),
-    industry: z.string().describe("The industry vertical, e.g. 'DTC Retail'"),
-  },
-  async (args) => {
-    const apiKey = process.env.FIRECRAWL_API_KEY;
-    if (!apiKey) {
-      return textResult({ error: "FIRECRAWL_API_KEY is not set" });
-    }
+// ---------------------------------------------------------------------------
+// AI SDK tools (Zod inputSchema + inline execute)
+// ---------------------------------------------------------------------------
 
-    const slug = slugify(args.company_name);
-    const url = `https://www.crunchbase.com/organization/${slug}`;
+export const tools = {
+  load_methodology: tool({
+    description:
+      "Load the active methodology config for a given service type from Supabase. Returns the full methodology JSON including KPI definitions, benchmark ranges, confidence discounts, and realization curve.",
+    inputSchema: z.object({
+      service_type: z
+        .string()
+        .describe("The service type to load methodology for, e.g. 'Experience Transformation & Design'"),
+    }),
+    execute: async ({ service_type }) => {
+      const methodology = await loadActiveMethodology(service_type);
+      if (!methodology) {
+        return { error: `No active methodology found for service_type="${service_type}"` };
+      }
+      return methodology;
+    },
+  }),
 
-    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        url,
-        formats: ["extract"],
-        extract: {
-          prompt: `Extract all available company information for '${args.company_name}' from this Crunchbase page.`,
-          schema: {
-            type: "object",
-            properties: {
-              company_name: { type: "string" },
-              total_funding: { type: "string" },
-              estimated_revenue: { type: "string" },
-              employee_count: { type: "string" },
-              headquarters: { type: "string" },
-              founded_date: { type: "string" },
-              estimated_valuation: { type: "string" },
+  fetch_financials: tool({
+    description:
+      "Fetch financial data for a public company from SEC filings via Valyu API. Queries revenue, income, margins, and growth rate in parallel. Returns a CompanyData object with confidence-scored fields.",
+    inputSchema: z.object({
+      company_name: z.string().describe("The company name to look up, e.g. 'Nike'"),
+      industry: z.string().describe("The industry vertical, e.g. 'Retail/Apparel'"),
+    }),
+    execute: async ({ company_name, industry }) => {
+      const apiKey = process.env.VALYU_API_KEY;
+      if (!apiKey) return { error: "VALYU_API_KEY is not set" };
+
+      const fieldNames = Object.keys(VALYU_QUERIES);
+      const entries = fieldNames.map((f) => VALYU_QUERIES[f]);
+      const queryTexts = entries.map((e) => e.queryFn(company_name));
+
+      const settled = await Promise.allSettled(
+        queryTexts.map((q) => queryValyu(q, apiKey))
+      );
+
+      const fields: Record<string, DataPointInput> = {};
+      for (let i = 0; i < fieldNames.length; i++) {
+        const result = settled[i];
+        const rawValue = result.status === "fulfilled" ? result.value : null;
+        const parsed = parseNumeric(rawValue, entries[i].hint);
+        if (parsed !== null) {
+          fields[fieldNames[i]] = {
+            value: parsed,
+            confidence_tier: "company_reported",
+            confidence_score: 0.9,
+          };
+        }
+      }
+
+      const companyData: CompanyData = {
+        company_name,
+        industry,
+        fields,
+      };
+      return companyData;
+    },
+  }),
+
+  scrape_company: tool({
+    description:
+      "Scrape company data from Crunchbase via Firecrawl for private/pre-IPO companies. Extracts funding, estimated revenue, headcount, and valuation. Returns a CompanyData object with estimated confidence scores.",
+    inputSchema: z.object({
+      company_name: z.string().describe("The company name to look up on Crunchbase"),
+      industry: z.string().describe("The industry vertical, e.g. 'DTC Retail'"),
+    }),
+    execute: async ({ company_name, industry }) => {
+      const apiKey = process.env.FIRECRAWL_API_KEY;
+      if (!apiKey) return { error: "FIRECRAWL_API_KEY is not set" };
+
+      const slug = slugify(company_name);
+      const url = `https://www.crunchbase.com/organization/${slug}`;
+
+      const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          url,
+          formats: ["extract"],
+          extract: {
+            prompt: `Extract all available company information for '${company_name}' from this Crunchbase page.`,
+            schema: {
+              type: "object",
+              properties: {
+                company_name: { type: "string" },
+                total_funding: { type: "string" },
+                estimated_revenue: { type: "string" },
+                employee_count: { type: "string" },
+                headquarters: { type: "string" },
+                founded_date: { type: "string" },
+                estimated_valuation: { type: "string" },
+              },
             },
           },
-        },
-      }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      return textResult({
-        error: `Firecrawl request failed (${res.status})`,
-        details: errText.slice(0, 500),
+        }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
-    }
 
-    const json = await res.json();
-    const extracted: CrunchbaseExtraction =
-      json?.data?.extract ?? json?.extract ?? {};
-
-    const fields: Record<string, DataPointInput> = {};
-
-    const mapping: Array<{ key: string; raw: unknown }> = [
-      { key: "total_funding", raw: extracted.total_funding },
-      { key: "estimated_revenue", raw: extracted.estimated_revenue },
-      { key: "annual_revenue", raw: extracted.estimated_revenue },
-      { key: "employee_count", raw: extracted.employee_count },
-      { key: "estimated_valuation", raw: extracted.estimated_valuation },
-    ];
-
-    for (const { key, raw } of mapping) {
-      const parsed = parseNumeric(raw, "currency");
-      if (parsed !== null) {
-        fields[key] = {
-          value: parsed,
-          confidence_tier: "estimated",
-          confidence_score: 0.5,
+      if (!res.ok) {
+        const errText = await res.text();
+        return {
+          error: `Firecrawl request failed (${res.status})`,
+          details: errText.slice(0, 500),
         };
       }
-    }
 
-    const companyData: CompanyData = {
-      company_name: extracted.company_name ?? args.company_name,
-      industry: args.industry,
-      fields,
-    };
+      const json = await res.json();
+      const extracted: CrunchbaseExtraction =
+        json?.data?.extract ?? json?.extract ?? {};
 
-    return textResult(companyData);
-  }
-);
+      const fields: Record<string, DataPointInput> = {};
+      const mapping: Array<{ key: string; raw: unknown }> = [
+        { key: "total_funding", raw: extracted.total_funding },
+        { key: "estimated_revenue", raw: extracted.estimated_revenue },
+        { key: "annual_revenue", raw: extracted.estimated_revenue },
+        { key: "employee_count", raw: extracted.employee_count },
+        { key: "estimated_valuation", raw: extracted.estimated_valuation },
+      ];
 
-// ---------------------------------------------------------------------------
-// Tool 4: run_calculation
-// ---------------------------------------------------------------------------
+      for (const { key, raw } of mapping) {
+        const parsed = parseNumeric(raw, "currency");
+        if (parsed !== null) {
+          fields[key] = {
+            value: parsed,
+            confidence_tier: "estimated",
+            confidence_score: 0.5,
+          };
+        }
+      }
 
-const runCalculationTool = tool(
-  "run_calculation",
-  "Run the full ROI calculation engine using company data and the active methodology. Loads the methodology from Supabase, then calculates conservative/moderate/aggressive scenarios with full audit trail.",
-  {
-    company_data: z.object({
-      company_name: z.string().describe("Company name"),
-      industry: z.string().describe("Industry vertical"),
-      fields: z.record(
-        z.string(),
-        z.object({
-          value: z.number().describe("The numeric value of the data point"),
-          confidence_tier: z
-            .enum(["company_reported", "industry_benchmark", "cross_industry", "estimated"])
-            .describe("Data source tier"),
-          confidence_score: z
-            .number()
-            .describe("Confidence score between 0 and 1"),
+      const companyData: CompanyData = {
+        company_name: extracted.company_name ?? company_name,
+        industry,
+        fields,
+      };
+      return companyData;
+    },
+  }),
+
+  run_calculation: tool({
+    description:
+      "Run the full ROI calculation engine using company data and the active methodology. Loads the methodology from Supabase, then calculates conservative/moderate/aggressive scenarios with full audit trail.",
+    inputSchema: z.object({
+      company_data: z
+        .object({
+          company_name: z.string().describe("Company name"),
+          industry: z.string().describe("Industry vertical"),
+          fields: z
+            .record(
+              z.string(),
+              z.object({
+                value: z.number().describe("The numeric value"),
+                confidence_tier: z.enum([
+                  "company_reported",
+                  "industry_benchmark",
+                  "cross_industry",
+                  "estimated",
+                ]),
+                confidence_score: z.number().describe("Confidence score 0-1"),
+              })
+            )
+            .describe(
+              "Data fields keyed by field name. Each value has {value, confidence_tier, confidence_score}"
+            ),
         })
-      ).describe("Data fields keyed by field name"),
-    }).describe("The company data with financial fields to use in calculations"),
-    service_type: z
-      .string()
-      .describe("The service type to load methodology for"),
-  },
-  async (args) => {
-    const methodology = await loadActiveMethodology(args.service_type);
-    if (!methodology) {
-      return textResult({ error: `No active methodology found for service_type="${args.service_type}"` });
-    }
+        .describe("The company data with financial fields to use in calculations"),
+      service_type: z.string().describe("The service type to load methodology for"),
+    }),
+    execute: async ({ company_data, service_type }) => {
+      const methodology = await loadActiveMethodology(service_type);
+      if (!methodology) {
+        return { error: `No active methodology found for service_type="${service_type}"` };
+      }
 
-    const companyData: CompanyData = {
-      company_name: args.company_data.company_name,
-      industry: args.company_data.industry,
-      fields: args.company_data.fields,
-    };
+      const companyData: CompanyData = {
+        company_name: company_data.company_name,
+        industry: company_data.industry,
+        fields: company_data.fields,
+      };
 
-    const result = calculate(companyData, methodology);
-
-    return textResult(result);
-  }
-);
-
-// ---------------------------------------------------------------------------
-// Exported server factory
-// ---------------------------------------------------------------------------
-
-export function createCproiToolServer() {
-  return createSdkMcpServer({
-    name: "cproi-tools",
-    version: "1.0.0",
-    tools: [
-      loadMethodologyTool,
-      fetchFinancialsTool,
-      scrapeCompanyTool,
-      runCalculationTool,
-    ],
-  });
-}
+      const result = calculate(companyData, methodology);
+      return result;
+    },
+  }),
+};

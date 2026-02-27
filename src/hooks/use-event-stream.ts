@@ -1,94 +1,109 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { createSSEConnection, type SSEEvent } from "../lib/sse-client";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import { useStreamStore } from "../stores/stream-store";
 import { useCaseStore, type CalculationResult } from "../stores/case-store";
 import { useActivityStore } from "../stores/activity-store";
 
-/**
- * Bug 5 fix: Map backend event types → frontend pipeline step IDs.
- * "started" events mark the step as active; "completed" events mark it done.
- */
-const EVENT_TO_STEP: Record<string, { stepId: string; action: "active" | "completed" }> = {
-  // Company identification
-  company_identified: { stepId: "classify", action: "active" },
-  company_classified: { stepId: "classify", action: "completed" },
-  // Data fetching
-  data_fetch_started: { stepId: "financials", action: "active" },
-  data_fetch_completed: { stepId: "financials", action: "completed" },
-  // Benchmark search
-  benchmark_search_started: { stepId: "benchmarks", action: "active" },
-  benchmark_found: { stepId: "benchmarks", action: "completed" },
-  benchmark_search_completed: { stepId: "benchmarks", action: "completed" },
-  // Calculation
-  calculation_started: { stepId: "calculate", action: "active" },
-  calculation_completed: { stepId: "calculate", action: "completed" },
-  // Merge (data resolution)
-  conflict_detected: { stepId: "merge", action: "active" },
-  conflict_resolved: { stepId: "merge", action: "completed" },
-  // Narrative
-  narrative_started: { stepId: "narrative", action: "active" },
-  narrative_chunk: { stepId: "narrative", action: "active" },
-  narrative_completed: { stepId: "narrative", action: "completed" },
-};
+// ---------------------------------------------------------------------------
+// Default pipeline steps — must match what the backend emits via data-pipeline
+// ---------------------------------------------------------------------------
 
-export function useEventStream(caseId: string | null) {
-  const esRef = useRef<EventSource | null>(null);
+const DEFAULT_PIPELINE_STEPS = [
+  { id: "classify", label: "Identifying company", status: "pending" as const },
+  { id: "financials", label: "Fetching financial data", status: "pending" as const },
+  { id: "benchmarks", label: "Researching benchmarks", status: "pending" as const },
+  { id: "calculate", label: "Running ROI calculations", status: "pending" as const },
+  { id: "narrative", label: "Generating narrative", status: "pending" as const },
+];
+
+// ---------------------------------------------------------------------------
+// Custom data part types (must match orchestrator output)
+// ---------------------------------------------------------------------------
+
+interface ActivityData {
+  activityType: "tool_start" | "tool_complete" | "milestone" | "error";
+  title: string;
+  tool?: string;
+  status: "running" | "done" | "error";
+}
+
+interface PipelineData {
+  stepId: string;
+  status: "active" | "completed";
+  message?: string;
+}
+
+// ---------------------------------------------------------------------------
+// usePipelineStream — wraps useChat from @ai-sdk/react
+// ---------------------------------------------------------------------------
+
+export function usePipelineStream(caseId: string | null) {
   const setConnectionStatus = useStreamStore((s) => s.setConnectionStatus);
   const updateStep = useStreamStore((s) => s.updateStep);
-  const appendNarrative = useCaseStore((s) => s.appendNarrative);
   const setResult = useCaseStore((s) => s.setResult);
+  const hasStarted = useRef(false);
 
-  useEffect(() => {
-    if (!caseId) return;
+  const chatHelpers = useChat({
+    transport: new DefaultChatTransport({
+      api: caseId ? `/api/cases/${caseId}/stream` : "/api/chat",
+    }),
+    experimental_throttle: 50,
 
-    // Reset stores for fresh case
-    useCaseStore.getState().reset();
-    useStreamStore.getState().reset();
-    useActivityStore.getState().reset();
-
-    setConnectionStatus("connecting");
-
-    const handleEvent = (event: SSEEvent) => {
+    onData: (dataPart) => {
       const activity = useActivityStore.getState();
 
-      // Pipeline lifecycle events
-      switch (event.type) {
-        case "pipeline_started":
+      // ---- data-caseinfo part ----
+      if (dataPart.type === "data-caseinfo") {
+        const d = dataPart.data as {
+          companyName: string;
+          industry: string;
+          serviceType: string;
+          caseId: string;
+        };
+        useCaseStore.getState().setCaseInfo({
+          caseId: d.caseId,
+          companyName: d.companyName,
+          industry: d.industry,
+          serviceType: d.serviceType,
+        });
+      }
+
+      // ---- data-activity parts ----
+      if (dataPart.type === "data-activity") {
+        const d = dataPart.data as ActivityData;
+
+        if (d.activityType === "milestone" && d.title === "Analysis pipeline started") {
           setConnectionStatus("connected");
-          if (event.payload.company_name) {
-            useCaseStore.getState().setCaseInfo({
-              caseId: caseId!,
-              companyName: event.payload.company_name as string,
-              industry: (event.payload.industry as string) ?? "",
-              serviceType: (event.payload.service_type as string) ?? "",
-            });
-          }
-          updateStep("classify", { status: "active" });
           activity.addEntry({
             id: "pipeline-started",
             type: "milestone",
-            timestamp: event.timestamp,
+            timestamp: new Date().toISOString(),
             title: "Analysis pipeline started",
             status: "running",
           });
-          return;
-
-        case "narrative_chunk":
-          appendNarrative((event.payload.text as string) ?? "");
-          break; // also falls through to step mapping below
-
-        case "pipeline_completed":
-          // Bug 3 fix: extract result and call setResult()
-          if (event.payload.result) {
-            setResult(event.payload.result as CalculationResult);
+        } else if (d.activityType === "tool_start") {
+          activity.addEntry({
+            id: dataPart.id ?? `tool-${d.tool}-${Date.now()}`,
+            type: "tool_start",
+            timestamp: new Date().toISOString(),
+            title: d.title,
+            tool: d.tool,
+            status: "running",
+          });
+        } else if (d.activityType === "tool_complete") {
+          // Find and update the matching tool_start entry
+          const entries = activity.entries;
+          const startEntry = entries.find(
+            (e) => e.tool === d.tool && e.status === "running"
+          );
+          if (startEntry) {
+            activity.updateEntry(startEntry.id, { status: "done", type: "tool_complete" });
           }
-          // Mark all remaining steps as completed
-          for (const step of ["classify", "financials", "benchmarks", "merge", "calculate", "narrative"]) {
-            updateStep(step, { status: "completed" });
-          }
-          // Sweep any tool activities still marked "running" to "done"
+        } else if (d.activityType === "milestone" && d.title === "Analysis complete") {
+          // Sweep any remaining running entries to done
           for (const entry of activity.entries) {
             if (entry.status === "running") {
               activity.updateEntry(entry.id, { status: "done" });
@@ -97,102 +112,112 @@ export function useEventStream(caseId: string | null) {
           activity.addEntry({
             id: "pipeline-completed",
             type: "milestone",
-            timestamp: event.timestamp,
+            timestamp: new Date().toISOString(),
             title: "Analysis complete",
             status: "done",
           });
-          esRef.current?.close();
-          setConnectionStatus("disconnected");
-          return;
-
-        case "pipeline_error": {
-          const errorMsg = (event.payload.error as string) ?? "Analysis failed. Please try again.";
-          useStreamStore.getState().setError(errorMsg);
+        } else if (d.activityType === "error") {
+          useStreamStore.getState().setError(d.title);
           activity.addEntry({
-            id: `error-${event.timestamp}`,
+            id: `pipeline-error-${Date.now()}`,
             type: "error",
-            timestamp: event.timestamp,
+            timestamp: new Date().toISOString(),
             title: "Pipeline error",
-            detail: errorMsg,
+            detail: d.title,
             status: "error",
           });
-          esRef.current?.close();
-          setConnectionStatus("disconnected");
-          return;
         }
-
-        case "agent_thinking":
-          activity.addEntry({
-            id: `think-${event.timestamp}-${Math.random().toString(36).slice(2, 6)}`,
-            type: "thinking",
-            timestamp: event.timestamp,
-            title: "Agent reasoning",
-            detail: event.payload.text as string,
-          });
-          break;
-
-        case "tool_call_started":
-          activity.addEntry({
-            id: (event.payload.tool_use_id as string) || `tool-${event.payload.tool}-${event.timestamp}`,
-            type: "tool_start",
-            timestamp: event.timestamp,
-            title: (event.payload.input_summary as string) || `Using ${event.payload.tool}`,
-            tool: event.payload.tool as string,
-            status: "running",
-          });
-          break;
-
-        case "tool_call_completed":
-          activity.updateEntry(
-            (event.payload.tool_use_id as string) || `tool-${event.payload.tool}-${event.timestamp}`,
-            { status: "done", type: "tool_complete" }
-          );
-          break;
-
-        case "data_point_found":
-          activity.addEntry({
-            id: `data-${event.timestamp}-${Math.random().toString(36).slice(2, 6)}`,
-            type: "data_found",
-            timestamp: event.timestamp,
-            title: (event.payload.label as string) || "Data point found",
-            detail: event.payload.value != null
-              ? `${event.payload.label ?? "Value"}: ${event.payload.value}`
-              : undefined,
-            status: "done",
-          });
-          break;
       }
 
-      // Bug 5 fix: map event types to pipeline step updates
-      const mapping = EVENT_TO_STEP[event.type];
-      if (mapping) {
-        updateStep(mapping.stepId, {
-          status: mapping.action === "active" ? "active" : "completed",
-          message: (event.payload.message as string) ?? undefined,
+      // ---- data-pipeline parts ----
+      if (dataPart.type === "data-pipeline") {
+        const d = dataPart.data as PipelineData;
+        updateStep(d.stepId, {
+          status: d.status === "active" ? "active" : "completed",
+          message: d.message,
         });
       }
-    };
+    },
 
-    const handleError = () => {
-      if (esRef.current?.readyState === EventSource.CLOSED) {
-        setConnectionStatus("disconnected");
-      }
-    };
-
-    esRef.current = createSSEConnection(caseId, handleEvent, handleError);
-
-    return () => {
-      esRef.current?.close();
-      setConnectionStatus("disconnected");
-    };
-  }, [caseId, setConnectionStatus, updateStep, appendNarrative, setResult]);
-
-  return {
-    isConnected: useStreamStore((s) => s.connectionStatus === "connected"),
-    error: null,
-    disconnect: () => {
-      esRef.current?.close();
+    onError: (error) => {
+      useStreamStore.getState().setError(error.message);
       setConnectionStatus("disconnected");
     },
+  });
+
+  const { messages, sendMessage, status, stop } = chatHelpers;
+
+  // Auto-send initial message to trigger the pipeline
+  useEffect(() => {
+    if (!caseId || hasStarted.current) return;
+    hasStarted.current = true;
+
+    // Reset stores for a fresh case
+    useCaseStore.getState().reset();
+    useStreamStore.getState().reset();
+    useActivityStore.getState().reset();
+
+    // Initialize pipeline steps so the PipelineTimeline renders them
+    useStreamStore.getState().initializeSteps(DEFAULT_PIPELINE_STEPS);
+
+    setConnectionStatus("connecting");
+
+    // Send a trigger message to start the pipeline
+    sendMessage({ text: "start" });
+  }, [caseId, sendMessage, setConnectionStatus]);
+
+  // Extract narrative text and calculation results from assistant messages
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role !== "assistant") return;
+
+    // Build full narrative from all text parts.
+    // useChat gives us the accumulated text (not deltas), so we set, not append.
+    const textParts: string[] = [];
+    for (const part of lastMsg.parts) {
+      if (part.type === "text") {
+        textParts.push(part.text);
+      }
+    }
+    const fullText = textParts.join("");
+
+    if (fullText) {
+      useCaseStore.getState().setNarrative(fullText);
+    }
+
+    // Check all assistant messages for calculation results in tool parts.
+    // run_calculation may not be in the last message if the LLM does further tool calls.
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+      for (const part of msg.parts) {
+        if (
+          part.type === "dynamic-tool" &&
+          "state" in part &&
+          part.state === "output-available" &&
+          part.output &&
+          typeof part.output === "object" &&
+          "scenarios" in part.output
+        ) {
+          setResult(part.output as CalculationResult);
+        }
+      }
+    }
+  }, [messages, setResult]);
+
+  // Map useChat status to connection status
+  useEffect(() => {
+    if (status === "submitted") setConnectionStatus("connecting");
+    else if (status === "streaming") setConnectionStatus("connected");
+    else if (status === "ready") setConnectionStatus("disconnected");
+    else if (status === "error") setConnectionStatus("disconnected");
+  }, [status, setConnectionStatus]);
+
+  return {
+    isConnected: status === "streaming",
+    status,
+    stop,
+    messages,
   };
 }
