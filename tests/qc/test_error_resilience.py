@@ -1,5 +1,6 @@
-"""Tests for error resilience -- providers failing gracefully."""
+"""Tests for error resilience -- providers and tools failing gracefully."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -7,86 +8,51 @@ import pytest
 from backend.engine.calculator import CalculationEngine
 from backend.methodology.loader import get_default_methodology
 from backend.models.company_data import CompanyData
-from backend.orchestrator.data_orchestrator import DataOrchestrator
+from backend.tools.agent_tools import fetch_financials, scrape_company
 
 
 class TestErrorResilience:
     """Verify the pipeline handles provider failures gracefully."""
 
     @pytest.mark.asyncio
-    async def test_valyu_timeout_doesnt_crash_pipeline(self):
-        """DataOrchestrator.gather() does not raise when Valyu times out."""
-        with patch(
-            "backend.orchestrator.data_orchestrator.ValyuProvider"
-        ) as MockValyu, patch(
-            "backend.orchestrator.data_orchestrator.FirecrawlProvider"
-        ) as MockFirecrawl, patch(
-            "backend.orchestrator.data_orchestrator.WebSearchProvider"
-        ) as MockWebSearch, patch(
-            "backend.orchestrator.data_orchestrator.classify_company"
-        ) as mock_classify:
-            from backend.models.enums import CompanyType
-
-            mock_classify.return_value = CompanyType.PUBLIC
-
+    async def test_valyu_timeout_returns_error_response(self):
+        """fetch_financials returns error dict when Valyu times out."""
+        with patch("backend.tools.agent_tools.ValyuProvider") as MockValyu, \
+             patch("backend.tools.agent_tools.FirecrawlProvider") as MockFirecrawl:
             # Valyu raises TimeoutError
             mock_valyu_instance = AsyncMock()
             mock_valyu_instance.fetch = AsyncMock(side_effect=TimeoutError("Valyu timed out"))
             MockValyu.return_value = mock_valyu_instance
 
-            # WebSearch returns empty CompanyData
-            mock_websearch_instance = AsyncMock()
-            mock_websearch_instance.fetch = AsyncMock(
-                return_value=CompanyData(company_name="TestCo", industry="retail")
-            )
-            MockWebSearch.return_value = mock_websearch_instance
-
+            # Firecrawl also fails
             mock_firecrawl_instance = AsyncMock()
+            mock_firecrawl_instance.fetch = AsyncMock(side_effect=Exception("Firecrawl failed"))
             MockFirecrawl.return_value = mock_firecrawl_instance
 
-            orchestrator = DataOrchestrator()
-            # Should NOT raise
-            merged, conflicts = await orchestrator.gather("TestCo", "retail")
-            assert merged is not None
-            assert merged.company_name == "TestCo"
+            result = await fetch_financials.handler({"company_name": "TestCo", "industry": "retail"})
+
+            # Should NOT raise -- returns error in content format
+            assert "content" in result
+            payload = json.loads(result["content"][0]["text"])
+            assert "error" in payload
+            assert payload["fields"] == {}
 
     @pytest.mark.asyncio
-    async def test_firecrawl_empty_response_graceful(self):
-        """DataOrchestrator.gather() completes when Firecrawl returns empty data."""
-        with patch(
-            "backend.orchestrator.data_orchestrator.ValyuProvider"
-        ) as MockValyu, patch(
-            "backend.orchestrator.data_orchestrator.FirecrawlProvider"
-        ) as MockFirecrawl, patch(
-            "backend.orchestrator.data_orchestrator.WebSearchProvider"
-        ) as MockWebSearch, patch(
-            "backend.orchestrator.data_orchestrator.classify_company"
-        ) as mock_classify:
-            from backend.models.enums import CompanyType
-
-            mock_classify.return_value = CompanyType.PRIVATE
-
-            # Firecrawl returns empty CompanyData (all None fields)
+    async def test_scrape_company_returns_error_on_failure(self):
+        """scrape_company returns error dict when Firecrawl fails."""
+        with patch("backend.tools.agent_tools.FirecrawlProvider") as MockFirecrawl:
             mock_firecrawl_instance = AsyncMock()
             mock_firecrawl_instance.fetch = AsyncMock(
-                return_value=CompanyData(company_name="PrivateCo", industry="saas")
+                side_effect=Exception("Connection refused")
             )
             MockFirecrawl.return_value = mock_firecrawl_instance
 
-            # WebSearch also returns empty
-            mock_websearch_instance = AsyncMock()
-            mock_websearch_instance.fetch = AsyncMock(
-                return_value=CompanyData(company_name="PrivateCo", industry="saas")
-            )
-            MockWebSearch.return_value = mock_websearch_instance
+            result = await scrape_company.handler({"company_name": "PrivateCo", "industry": "saas"})
 
-            mock_valyu_instance = AsyncMock()
-            MockValyu.return_value = mock_valyu_instance
-
-            orchestrator = DataOrchestrator()
-            merged, conflicts = await orchestrator.gather("PrivateCo", "saas")
-            assert merged is not None
-            assert merged.company_name == "PrivateCo"
+            assert "content" in result
+            payload = json.loads(result["content"][0]["text"])
+            assert "error" in payload
+            assert payload["fields"] == {}
 
     def test_pipeline_uses_defaults_when_no_benchmarks(self):
         """CalculationEngine runs even when company data is mostly empty."""

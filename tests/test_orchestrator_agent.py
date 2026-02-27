@@ -1,16 +1,18 @@
 """Tests for orchestrator agent wiring, subagent definitions, and custom tools."""
 
+import json
 import pytest
+
+from claude_agent_sdk import AgentDefinition, SdkMcpTool
 
 from backend.orchestrator.system_prompt import ORCHESTRATOR_SYSTEM_PROMPT
 from backend.orchestrator.subagents import (
-    FINANCIAL_DATA_SUBAGENT,
-    BENCHMARK_RESEARCH_SUBAGENT,
-    CALC_NARRATIVE_SUBAGENT,
-    get_subagent_definitions,
+    FINANCIAL_DATA_AGENT,
+    BENCHMARK_RESEARCH_AGENT,
+    CALC_NARRATIVE_AGENT,
+    get_agent_definitions,
 )
-from backend.tools.agent_tools import load_methodology_config, run_roi_calculation
-from tests.conftest import make_dp
+from backend.tools.agent_tools import run_calculation, load_methodology
 
 
 class TestOrchestratorAgent:
@@ -18,35 +20,55 @@ class TestOrchestratorAgent:
         """ORCHESTRATOR_SYSTEM_PROMPT contains 'methodology' (case-insensitive)."""
         assert "methodology" in ORCHESTRATOR_SYSTEM_PROMPT.lower()
 
-    def test_three_subagents_defined(self):
-        """get_subagent_definitions() returns list of 3."""
-        defs = get_subagent_definitions()
-        assert isinstance(defs, list)
+    def test_system_prompt_references_tools(self):
+        """System prompt should mention the SDK tools."""
+        assert "load_methodology" in ORCHESTRATOR_SYSTEM_PROMPT
+        assert "fetch_financials" in ORCHESTRATOR_SYSTEM_PROMPT
+        assert "WebSearch" in ORCHESTRATOR_SYSTEM_PROMPT
+        assert "run_calculation" in ORCHESTRATOR_SYSTEM_PROMPT
+
+    def test_three_agent_definitions(self):
+        """get_agent_definitions() returns dict of 3 AgentDefinition objects."""
+        defs = get_agent_definitions()
+        assert isinstance(defs, dict)
         assert len(defs) == 3
+        for name, agent_def in defs.items():
+            assert isinstance(agent_def, AgentDefinition)
 
-    def test_financial_subagent_has_valyu_tools(self):
-        """Financial subagent's tools list contains 'fetch_public_financials'."""
-        assert "fetch_public_financials" in FINANCIAL_DATA_SUBAGENT["tools"]
+    def test_financial_agent_has_fetch_tools(self):
+        """Financial agent's tools list contains MCP tool names."""
+        assert "mcp__cproi__fetch_financials" in FINANCIAL_DATA_AGENT.tools
+        assert "mcp__cproi__scrape_company" in FINANCIAL_DATA_AGENT.tools
 
-    def test_benchmark_subagent_has_websearch_tools(self):
-        """Benchmark subagent's tools list contains 'search_benchmarks'."""
-        assert "search_benchmarks" in BENCHMARK_RESEARCH_SUBAGENT["tools"]
+    def test_benchmark_agent_has_websearch_tools(self):
+        """Benchmark agent's tools list contains WebSearch/WebFetch."""
+        assert "WebSearch" in BENCHMARK_RESEARCH_AGENT.tools
+        assert "WebFetch" in BENCHMARK_RESEARCH_AGENT.tools
 
-    def test_calc_subagent_has_calculation_tools(self):
-        """Calc subagent's tools list contains 'run_roi_calculation'."""
-        assert "run_roi_calculation" in CALC_NARRATIVE_SUBAGENT["tools"]
+    def test_calc_agent_has_calculation_tools(self):
+        """Calc agent's tools list contains run_calculation."""
+        assert "mcp__cproi__run_calculation" in CALC_NARRATIVE_AGENT.tools
 
-    def test_custom_tools_return_correct_types(self):
-        """load_methodology_config returns dict; run_roi_calculation returns dict with 'scenarios'."""
-        # Test load_methodology_config
-        config = load_methodology_config("experience-transformation-design")
-        assert isinstance(config, dict)
-        assert "id" in config
-        assert "kpis" in config
+    def test_custom_tools_are_sdk_mcp_tools(self):
+        """Tools should be SdkMcpTool instances."""
+        assert isinstance(run_calculation, SdkMcpTool)
+        assert isinstance(load_methodology, SdkMcpTool)
 
-        # Test run_roi_calculation with mocked data
-        from backend.models.enums import DataSourceTier
+    @pytest.mark.asyncio
+    async def test_load_methodology_returns_valid_config(self):
+        """load_methodology returns dict with kpis list."""
+        result = await load_methodology.handler({
+            "service_type": "experience-transformation-design",
+        })
+        assert "content" in result
+        payload = json.loads(result["content"][0]["text"])
+        assert isinstance(payload, dict)
+        assert "id" in payload
+        assert "kpis" in payload
 
+    @pytest.mark.asyncio
+    async def test_run_calculation_returns_scenarios(self):
+        """run_calculation returns dict with 3 scenarios."""
         company_data_dict = {
             "company_name": "Test Corp",
             "industry": "retail",
@@ -113,9 +135,14 @@ class TestOrchestratorAgent:
                 },
             },
         }
-        result = run_roi_calculation(company_data_dict, "experience-transformation-design")
-        assert isinstance(result, dict)
-        assert "scenarios" in result
-        assert "conservative" in result["scenarios"]
-        assert "moderate" in result["scenarios"]
-        assert "aggressive" in result["scenarios"]
+        result = await run_calculation.handler({
+            "company_data": company_data_dict,
+            "service_type": "experience-transformation-design",
+        })
+        assert "content" in result
+        payload = json.loads(result["content"][0]["text"])
+        assert isinstance(payload, dict)
+        assert "scenarios" in payload
+        assert "conservative" in payload["scenarios"]
+        assert "moderate" in payload["scenarios"]
+        assert "aggressive" in payload["scenarios"]

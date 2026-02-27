@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-# Tool name → user-facing progress message
+# Tool name -> user-facing progress message
 _TOOL_MESSAGES: dict[str, str] = {
-    "mcp__cproi-tools__fetch_public_financials": "Fetching company financial data...",
-    "mcp__cproi-tools__scrape_private_company": "Scraping company information...",
-    "mcp__cproi-tools__search_benchmarks": "Searching for industry benchmarks...",
-    "mcp__cproi-tools__run_roi_calculation": "Running ROI calculations...",
-    "mcp__cproi-tools__generate_narrative": "Generating executive narrative...",
+    "mcp__cproi__fetch_financials": "Fetching company financial data...",
+    "mcp__cproi__scrape_company": "Scraping company information...",
+    "mcp__cproi__load_methodology": "Loading methodology configuration...",
+    "mcp__cproi__run_calculation": "Running ROI calculations...",
+    "WebSearch": "Searching for industry benchmarks...",
+    "WebFetch": "Fetching benchmark data from source...",
 }
 
 _DEFAULT_MESSAGE = "Processing..."

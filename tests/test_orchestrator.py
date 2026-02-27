@@ -1,168 +1,69 @@
-"""Tests for DataOrchestrator -- all providers mocked."""
+"""Tests for the agentic orchestrator integration."""
 
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from backend.models.audit import DataPoint, SourceAttribution
-from backend.models.company_data import CompanyData
-from backend.models.enums import CompanyType, DataSourceTier, DataSourceType
-from backend.orchestrator.data_orchestrator import DataOrchestrator
+from backend.orchestrator.agent import CPROIOrchestrator, TOOL_EVENT_MAP
+from backend.streaming.manager import StreamManager
+from backend.streaming.events import PipelineEventType
 
 
-def _make_dp(value, tier, source_type=DataSourceType.VALYU_SEC_FILING, score=0.90):
-    return DataPoint(
-        value=value,
-        confidence_tier=tier,
-        confidence_score=score,
-        source=SourceAttribution(source_type=source_type),
-    )
+class TestToolEventMapping:
+    """Verify tool-to-SSE-event mapping is correct."""
+
+    def test_fetch_financials_maps_to_data_fetch(self):
+        started, completed = TOOL_EVENT_MAP["mcp__cproi__fetch_financials"]
+        assert started == PipelineEventType.DATA_FETCH_STARTED
+        assert completed == PipelineEventType.DATA_FETCH_COMPLETED
+
+    def test_websearch_maps_to_benchmark(self):
+        started, completed = TOOL_EVENT_MAP["WebSearch"]
+        assert started == PipelineEventType.BENCHMARK_SEARCH_STARTED
+        assert completed == PipelineEventType.BENCHMARK_FOUND
+
+    def test_run_calculation_maps_to_calculation(self):
+        started, completed = TOOL_EVENT_MAP["mcp__cproi__run_calculation"]
+        assert started == PipelineEventType.CALCULATION_STARTED
+        assert completed == PipelineEventType.CALCULATION_COMPLETED
+
+    def test_all_custom_tools_mapped(self):
+        """Every custom tool should have an event mapping."""
+        assert "mcp__cproi__fetch_financials" in TOOL_EVENT_MAP
+        assert "mcp__cproi__scrape_company" in TOOL_EVENT_MAP
+        assert "mcp__cproi__run_calculation" in TOOL_EVENT_MAP
+        assert "mcp__cproi__load_methodology" in TOOL_EVENT_MAP
 
 
-def _make_company_data(name, industry, revenue=None, tier=None, source_type=None):
-    cd = CompanyData(company_name=name, industry=industry)
-    if revenue is not None:
-        cd.annual_revenue = _make_dp(revenue, tier, source_type)
-    cd._data_gaps = []
-    return cd
-
-
-class TestDataOrchestrator:
-
-    @pytest.mark.asyncio
-    async def test_public_company_routes_to_valyu(self):
-        valyu_data = _make_company_data(
-            "Apple", "retail", 380_000_000_000,
-            DataSourceTier.COMPANY_REPORTED, DataSourceType.VALYU_SEC_FILING,
-        )
-        websearch_data = _make_company_data("Apple", "retail")
-
-        with patch("backend.orchestrator.data_orchestrator.classify_company") as mock_classify, \
-             patch("backend.orchestrator.data_orchestrator.ValyuProvider") as MockValyu, \
-             patch("backend.orchestrator.data_orchestrator.FirecrawlProvider") as MockFirecrawl, \
-             patch("backend.orchestrator.data_orchestrator.WebSearchProvider") as MockWebSearch:
-
-            mock_classify.return_value = CompanyType.PUBLIC
-
-            mock_valyu_inst = AsyncMock()
-            mock_valyu_inst.fetch = AsyncMock(return_value=valyu_data)
-            MockValyu.return_value = mock_valyu_inst
-
-            mock_firecrawl_inst = AsyncMock()
-            mock_firecrawl_inst.fetch = AsyncMock()
-            MockFirecrawl.return_value = mock_firecrawl_inst
-
-            mock_websearch_inst = AsyncMock()
-            mock_websearch_inst.fetch = AsyncMock(return_value=websearch_data)
-            MockWebSearch.return_value = mock_websearch_inst
-
-            orchestrator = DataOrchestrator()
-            merged, conflicts = await orchestrator.gather("Apple", "retail")
-
-            mock_valyu_inst.fetch.assert_called_once_with("Apple", "retail")
-            mock_firecrawl_inst.fetch.assert_not_called()
+class TestOrchestratorConfig:
 
     @pytest.mark.asyncio
-    async def test_private_company_routes_to_firecrawl(self):
-        firecrawl_data = _make_company_data(
-            "WidgetCo", "saas", 50_000_000,
-            DataSourceTier.ESTIMATED, DataSourceType.FIRECRAWL_CRUNCHBASE,
-        )
-        websearch_data = _make_company_data("WidgetCo", "saas")
+    async def test_stream_manager_receives_pipeline_started(self):
+        """When the orchestrator runs, it should emit PIPELINE_STARTED."""
+        with patch("backend.orchestrator.agent.ClaudeSDKClient") as MockClient:
+            mock_client = AsyncMock()
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client.query = AsyncMock()
+            mock_client.receive_response = AsyncMock(return_value=AsyncMock(
+                __aiter__=lambda self: self,
+                __anext__=AsyncMock(side_effect=StopAsyncIteration),
+            ))
 
-        with patch("backend.orchestrator.data_orchestrator.classify_company") as mock_classify, \
-             patch("backend.orchestrator.data_orchestrator.ValyuProvider") as MockValyu, \
-             patch("backend.orchestrator.data_orchestrator.FirecrawlProvider") as MockFirecrawl, \
-             patch("backend.orchestrator.data_orchestrator.WebSearchProvider") as MockWebSearch:
+            stream_manager = StreamManager()
+            events_received: list = []
+            original_emit = stream_manager.emit
 
-            mock_classify.return_value = CompanyType.PRIVATE
+            async def capture_emit(case_id, event):
+                events_received.append(event)
+                await original_emit(case_id, event)
 
-            mock_valyu_inst = AsyncMock()
-            mock_valyu_inst.fetch = AsyncMock()
-            MockValyu.return_value = mock_valyu_inst
+            stream_manager.emit = capture_emit
 
-            mock_firecrawl_inst = AsyncMock()
-            mock_firecrawl_inst.fetch = AsyncMock(return_value=firecrawl_data)
-            MockFirecrawl.return_value = mock_firecrawl_inst
+            orchestrator = CPROIOrchestrator(stream_manager=stream_manager)
+            try:
+                await orchestrator.run("Nike", "retail", "experience-transformation-design", "test-123")
+            except Exception:
+                pass
 
-            mock_websearch_inst = AsyncMock()
-            mock_websearch_inst.fetch = AsyncMock(return_value=websearch_data)
-            MockWebSearch.return_value = mock_websearch_inst
-
-            orchestrator = DataOrchestrator()
-            merged, conflicts = await orchestrator.gather("WidgetCo", "saas")
-
-            mock_firecrawl_inst.fetch.assert_called_once_with("WidgetCo", "saas")
-            mock_valyu_inst.fetch.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_missing_fields_filled_by_websearch(self):
-        # Valyu returns revenue but no conversion rate
-        valyu_data = _make_company_data(
-            "Apple", "retail", 380_000_000_000,
-            DataSourceTier.COMPANY_REPORTED, DataSourceType.VALYU_SEC_FILING,
-        )
-
-        # WebSearch fills conversion rate
-        websearch_data = CompanyData(company_name="Apple", industry="retail")
-        websearch_data.current_conversion_rate = _make_dp(
-            0.025, DataSourceTier.INDUSTRY_BENCHMARK, DataSourceType.WEBSEARCH_BENCHMARK,
-        )
-        websearch_data._data_gaps = []
-
-        with patch("backend.orchestrator.data_orchestrator.classify_company") as mock_classify, \
-             patch("backend.orchestrator.data_orchestrator.ValyuProvider") as MockValyu, \
-             patch("backend.orchestrator.data_orchestrator.FirecrawlProvider") as MockFirecrawl, \
-             patch("backend.orchestrator.data_orchestrator.WebSearchProvider") as MockWebSearch:
-
-            mock_classify.return_value = CompanyType.PUBLIC
-
-            mock_valyu_inst = AsyncMock()
-            mock_valyu_inst.fetch = AsyncMock(return_value=valyu_data)
-            MockValyu.return_value = mock_valyu_inst
-
-            mock_firecrawl_inst = AsyncMock()
-            MockFirecrawl.return_value = mock_firecrawl_inst
-
-            mock_websearch_inst = AsyncMock()
-            mock_websearch_inst.fetch = AsyncMock(return_value=websearch_data)
-            MockWebSearch.return_value = mock_websearch_inst
-
-            orchestrator = DataOrchestrator()
-            merged, conflicts = await orchestrator.gather("Apple", "retail")
-
-            # Revenue from Valyu, conversion rate from WebSearch
-            assert merged.annual_revenue is not None
-            assert merged.current_conversion_rate is not None
-            assert merged.current_conversion_rate.value == pytest.approx(0.025)
-
-    @pytest.mark.asyncio
-    async def test_returns_populated_company_data(self):
-        valyu_data = _make_company_data(
-            "Nike", "retail", 51_200_000_000,
-            DataSourceTier.COMPANY_REPORTED, DataSourceType.VALYU_SEC_FILING,
-        )
-        websearch_data = _make_company_data("Nike", "retail")
-
-        with patch("backend.orchestrator.data_orchestrator.classify_company") as mock_classify, \
-             patch("backend.orchestrator.data_orchestrator.ValyuProvider") as MockValyu, \
-             patch("backend.orchestrator.data_orchestrator.FirecrawlProvider") as MockFirecrawl, \
-             patch("backend.orchestrator.data_orchestrator.WebSearchProvider") as MockWebSearch:
-
-            mock_classify.return_value = CompanyType.PUBLIC
-
-            mock_valyu_inst = AsyncMock()
-            mock_valyu_inst.fetch = AsyncMock(return_value=valyu_data)
-            MockValyu.return_value = mock_valyu_inst
-
-            mock_firecrawl_inst = AsyncMock()
-            MockFirecrawl.return_value = mock_firecrawl_inst
-
-            mock_websearch_inst = AsyncMock()
-            mock_websearch_inst.fetch = AsyncMock(return_value=websearch_data)
-            MockWebSearch.return_value = mock_websearch_inst
-
-            orchestrator = DataOrchestrator()
-            merged, conflicts = await orchestrator.gather("Nike", "retail")
-
-            assert merged.annual_revenue is not None
-            assert merged.annual_revenue.value == 51_200_000_000
+            event_types = [e.event_type for e in events_received]
+            assert PipelineEventType.PIPELINE_STARTED in event_types
