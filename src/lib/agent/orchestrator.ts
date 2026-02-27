@@ -127,10 +127,11 @@ no recent data exists.
    - Check that total impact is reasonable for the company's revenue.
 
 5. **Generate structured output** — Using the calculation results, generate your final output
-   using the UI component system described below. Your output MUST use the structured component
-   format, NOT plain text or markdown.
+   using the UI component system described below. Write a brief 1-2 sentence summary, then
+   output ALL UI components as JSONL patches inside a single \`\`\`spec code fence.
+   Do NOT use plain markdown for the final output — use the component system.
 
-   Follow this exact order:
+   Inside the \`\`\`spec fence, follow this exact order:
    - Start with exactly ONE ROIStatement (the hero one-liner with investment, impact, and ROI multiple)
    - Then a NarrativeBlock with heading "Executive Summary" (2-3 sentence SCR framing)
    - Then MetricCards for each non-skipped KPI, ordered by impact (highest first)
@@ -154,6 +155,7 @@ no recent data exists.
 ## UI Component System
 
 ${catalog.prompt({
+  mode: "chat",
   customRules: [
     "Always start with exactly ONE ROIStatement component.",
     "Follow with MetricCards ordered by impact (highest dollar impact first).",
@@ -165,6 +167,8 @@ ${catalog.prompt({
     "Format percentages without unnecessary decimals: 35%, 2.1%.",
     "Keep NarrativeBlock body text to 2-3 sentences maximum.",
     "Every MetricCard must include a real source — never fabricate sources.",
+    "Output ALL components in a single ```spec fence — do NOT split across multiple fences.",
+    "The ```spec fence should be your FINAL output after all tool calls are complete.",
   ],
 })}
 `;
