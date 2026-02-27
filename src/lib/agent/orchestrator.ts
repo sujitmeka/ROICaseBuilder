@@ -7,8 +7,10 @@
  */
 
 import { streamText, stepCountIs, createUIMessageStream } from "ai";
+import { pipeJsonRender } from "@json-render/core";
 import { anthropic } from "@ai-sdk/anthropic";
 import { tools } from "./tools";
+import { catalog } from "../ui/catalog";
 
 // ---------------------------------------------------------------------------
 // Custom data part types (must match frontend expectations)
@@ -124,12 +126,22 @@ no recent data exists.
    - Do the numbers make sense? Flag anything suspicious.
    - Check that total impact is reasonable for the company's revenue.
 
-5. **Generate narrative** — Using the calculation results, write a Situation-Complication-Resolution
-   (SCR) narrative that frames the ROI findings. Include:
-   - Headline impact number (moderate scenario)
-   - Per-KPI breakdown with sources cited
-   - 3-year projection using the realization curve
-   - Confidence notes where data quality is lower
+5. **Generate structured output** — Using the calculation results, generate your final output
+   using the UI component system described below. Your output MUST use the structured component
+   format, NOT plain text or markdown.
+
+   Follow this exact order:
+   - Start with exactly ONE ROIStatement (the hero one-liner with investment, impact, and ROI multiple)
+   - Then a NarrativeBlock with heading "Executive Summary" (2-3 sentence SCR framing)
+   - Then MetricCards for each non-skipped KPI, ordered by impact (highest first)
+   - Then a NarrativeBlock with heading "3-Year Outlook" (1-2 sentences)
+   - Then 3 ProjectionRows (Year 1, Year 2, Year 3) with realization curve data
+   - Then ConfidenceNotes for any medium/low confidence data sources
+   - Finally SkippedKPIs for any KPIs that couldn't be calculated
+
+   Keep ALL text concise and copy-pasteable. These outputs will be pasted into client slide decks.
+   NarrativeBlock bodies should be 2-3 sentences maximum. Format all dollar values compactly
+   ($4.2M, $350K). Format percentages without decimals where possible.
 
 ## Key Principles
 
@@ -138,6 +150,23 @@ no recent data exists.
 - Prefer company-reported data over benchmarks. Use benchmarks only for gaps.
 - If a field can't be found anywhere, skip the KPI gracefully — don't fabricate data.
 - Think step by step. After each tool call, reason about what you learned and what to do next.
+
+## UI Component System
+
+${catalog.prompt({
+  customRules: [
+    "Always start with exactly ONE ROIStatement component.",
+    "Follow with MetricCards ordered by impact (highest dollar impact first).",
+    "Use NarrativeBlock sparingly — only for Executive Summary and 3-Year Outlook headings.",
+    "Generate exactly 3 ProjectionRows for the 3-year outlook.",
+    "Add ConfidenceNotes for any data points with medium or low confidence.",
+    "Add SkippedKPIs at the end for any KPIs that were skipped.",
+    "Format all currency values compactly: $4.2M, $350K, $1.2B.",
+    "Format percentages without unnecessary decimals: 35%, 2.1%.",
+    "Keep NarrativeBlock body text to 2-3 sentences maximum.",
+    "Every MetricCard must include a real source — never fabricate sources.",
+  ],
+})}
 `;
 }
 
@@ -344,8 +373,10 @@ export function createPipelineStream(params: {
           data: { stepId: "narrative", status: "active" },
         } as PipelineDataPart);
 
-        // Merge the LLM stream into the UI stream
-        writer.merge(result.toUIMessageStream());
+        // Merge the LLM stream into the UI stream.
+        // pipeJsonRender separates JSONL patches (for json-render components)
+        // from regular text in the stream, converting them to spec data parts.
+        writer.merge(pipeJsonRender(result.toUIMessageStream()));
 
         // Wait for the stream to complete, then resolve with results
         const finalText = await result.text;

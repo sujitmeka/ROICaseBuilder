@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import type { Spec } from "@json-render/core";
+import { useJsonRenderMessage } from "@json-render/react";
 import { useStreamStore } from "../stores/stream-store";
 import { useCaseStore, type CalculationResult } from "../stores/case-store";
 import { useActivityStore } from "../stores/activity-store";
@@ -173,8 +175,9 @@ export function usePipelineStream(caseId: string | null) {
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.role !== "assistant") return;
 
-    // Build full narrative from all text parts.
-    // useChat gives us the accumulated text (not deltas), so we set, not append.
+    // Build full narrative from text parts and store it.
+    // This feeds Supabase persistence (via the orchestrator's result.text) and
+    // serves as fallback if json-render spec is not available.
     const textParts: string[] = [];
     for (const part of lastMsg.parts) {
       if (part.type === "text") {
@@ -214,10 +217,20 @@ export function usePipelineStream(caseId: string | null) {
     else if (status === "error") setConnectionStatus("disconnected");
   }, [status, setConnectionStatus]);
 
+  // Extract json-render spec from the last assistant message's parts.
+  // pipeJsonRender on the server converts JSONL patches into spec data parts
+  // that arrive in the message parts array alongside text parts.
+  const lastAssistantMsg = messages.findLast((m) => m.role === "assistant");
+  const lastParts = lastAssistantMsg?.parts ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { spec, hasSpec } = useJsonRenderMessage(lastParts as any);
+
   return {
     isConnected: status === "streaming",
     status,
     stop,
     messages,
+    spec: spec as Spec | null,
+    hasSpec,
   };
 }
