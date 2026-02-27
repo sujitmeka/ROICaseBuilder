@@ -48,7 +48,7 @@ class CreateCaseResponse(BaseModel):
 
 
 async def run_pipeline(case_id: str, company_name: str, industry: str, service_type: str):
-    """Background task: run the full ROI pipeline and emit SSE events."""
+    """Background task: run the agentic ROI pipeline and emit SSE events."""
     orchestrator = CPROIOrchestrator(stream_manager=stream_manager)
     try:
         result = await orchestrator.run(
@@ -60,12 +60,7 @@ async def run_pipeline(case_id: str, company_name: str, industry: str, service_t
         _cases[case_id]["status"] = "completed"
         _cases[case_id]["result"] = result
 
-        # Emit pipeline completed
-        await stream_manager.emit(case_id, SSEEvent(
-            event_type=PipelineEventType.PIPELINE_COMPLETED,
-            data={"case_id": case_id, "status": "completed"},
-            sequence_id=999,
-        ))
+        # Pipeline completed event is emitted by the orchestrator itself
     except Exception as e:
         logger.exception(f"Pipeline failed for case {case_id}")
         _cases[case_id]["status"] = "error"
