@@ -8,8 +8,15 @@ import type { CompanyData, DataPointInput, MethodologyConfig } from "./types";
 // Helpers
 // ---------------------------------------------------------------------------
 
+const FETCH_TIMEOUT_MS = 30_000;
+
+function textResult(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
+}
+
 /**
- * Parse numeric strings returned by Valyu into raw numbers.
+ * Parse a numeric value from text. Uses `hint` to disambiguate when the text
+ * contains both percentages and currency amounts (common in financial prose).
  *
  * Handles:
  *   "$51.2 billion"  -> 51_200_000_000
@@ -18,46 +25,50 @@ import type { CompanyData, DataPointInput, MethodologyConfig } from "./types";
  *   "-5.2%"          -> -0.052
  *   "N/A"            -> null
  *   "$1,234,567"     -> 1234567
- *   "1234.56"        -> 1234.56
  */
-function parseNumeric(raw: unknown): number | null {
+function parseNumeric(raw: unknown, hint?: "currency" | "percentage"): number | null {
   if (raw === null || raw === undefined) return null;
   const s = String(raw).trim();
-  if (!s || s.toLowerCase() === "n/a" || s.toLowerCase() === "not available") {
+  const lower = s.toLowerCase();
+  if (!s || lower === "n/a" || lower === "na" || lower === "not available" || lower === "none" || lower === "null") {
     return null;
   }
 
-  // Percentage handling
-  if (s.includes("%")) {
-    const num = parseFloat(s.replace(/[^0-9.\-]/g, ""));
-    return isNaN(num) ? null : num / 100;
+  // Use regex-based extraction (matches Python's re.search approach)
+  // Percentage: anchored regex like Python original
+  const pctMatch = s.match(/(-?\d+\.?\d*)\s*%/);
+  if (pctMatch && hint !== "currency") {
+    return parseFloat(pctMatch[1]) / 100;
   }
 
-  // Multiplier keywords
-  const lower = s.toLowerCase();
-  let multiplier = 1;
-  if (lower.includes("trillion")) multiplier = 1_000_000_000_000;
-  else if (lower.includes("billion")) multiplier = 1_000_000_000;
-  else if (lower.includes("million")) multiplier = 1_000_000;
-  else if (lower.includes("thousand")) multiplier = 1_000;
+  // Dollar amounts with word multipliers: "$51.2 billion"
+  const multipliers: Record<string, number> = {
+    trillion: 1_000_000_000_000,
+    billion: 1_000_000_000,
+    million: 1_000_000,
+    thousand: 1_000,
+  };
+  const moneyMatch = s.match(/\$?\s*(-?\d[\d,]*\.?\d*)\s*(trillion|billion|million|thousand)/i);
+  if (moneyMatch) {
+    const value = parseFloat(moneyMatch[1].replace(/,/g, ""));
+    return isNaN(value) ? null : value * multipliers[moneyMatch[2].toLowerCase()];
+  }
 
-  // Strip everything except digits, dots, and minus signs
-  const cleaned = s.replace(/[^0-9.\-]/g, "");
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num * multiplier;
-}
+  // Plain number (possibly with commas or dollar sign)
+  const plainMatch = s.match(/(-?\$?\d[\d,]*\.?\d*)/);
+  if (plainMatch) {
+    const cleaned = plainMatch[1].replace(/[$,]/g, "");
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num;
+  }
 
-/**
- * Parse money strings from Firecrawl / Crunchbase extractions.
- * Similar to parseNumeric but tuned for funding / valuation strings.
- */
-function _parse_money(raw: unknown): number | null {
-  return parseNumeric(raw);
+  return null;
 }
 
 /**
  * Generate a URL-safe slug from a company name.
- * "Warby Parker" -> "warby-parker"
+ * NOTE: Crunchbase slugs don't always match simple slugification
+ * (e.g. "JPMorgan Chase" -> "jpmorgan-chase-co"). This is a best-effort guess.
  */
 function slugify(name: string): string {
   return name
@@ -65,6 +76,25 @@ function slugify(name: string): string {
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-");
+}
+
+/**
+ * Load the active methodology for a service type from Supabase.
+ * Shared by load_methodology tool and run_calculation tool.
+ */
+async function loadActiveMethodology(serviceType: string): Promise<MethodologyConfig | null> {
+  const { data, error } = await supabase
+    .from("methodologies")
+    .select("*")
+    .eq("service_type", serviceType)
+    .eq("enabled", true)
+    .order("version", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) return null;
+  if (!Array.isArray(data.kpis) || !data.confidence_discounts) return null;
+  return data as MethodologyConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,32 +108,11 @@ const loadMethodologyTool = tool(
     service_type: z.string().describe("The service type to load methodology for, e.g. 'Experience Transformation & Design'"),
   },
   async (args) => {
-    const { data, error } = await supabase
-      .from("methodologies")
-      .select("*")
-      .eq("service_type", args.service_type)
-      .eq("enabled", true)
-      .order("version", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error || !data) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              error: `No active methodology found for service_type="${args.service_type}"`,
-              details: error?.message ?? "No rows returned",
-            }),
-          },
-        ],
-      };
+    const methodology = await loadActiveMethodology(args.service_type);
+    if (!methodology) {
+      return textResult({ error: `No active methodology found for service_type="${args.service_type}"` });
     }
-
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(data) }],
-    };
+    return textResult(methodology);
   }
 );
 
@@ -111,13 +120,13 @@ const loadMethodologyTool = tool(
 // Tool 2: fetch_financials
 // ---------------------------------------------------------------------------
 
-const VALYU_QUERIES: Record<string, (company: string) => string> = {
-  annual_revenue: (c) => `What is ${c}'s total annual revenue from their latest SEC filing?`,
-  net_income: (c) => `What is ${c}'s net income from their latest SEC filing?`,
-  gross_margin: (c) => `What is ${c}'s gross margin percentage?`,
-  operating_margin: (c) => `What is ${c}'s operating margin percentage?`,
-  revenue_growth_yoy: (c) => `What is ${c}'s year-over-year revenue growth rate?`,
-  online_revenue: (c) => `What is ${c}'s online or digital revenue?`,
+const VALYU_QUERIES: Record<string, { queryFn: (c: string) => string; hint: "currency" | "percentage" }> = {
+  annual_revenue:     { queryFn: (c) => `What is ${c}'s total annual revenue from their latest SEC filing?`, hint: "currency" },
+  net_income:         { queryFn: (c) => `What is ${c}'s net income from their latest SEC filing?`, hint: "currency" },
+  gross_margin:       { queryFn: (c) => `What is ${c}'s gross margin percentage?`, hint: "percentage" },
+  operating_margin:   { queryFn: (c) => `What is ${c}'s operating margin percentage?`, hint: "percentage" },
+  revenue_growth_yoy: { queryFn: (c) => `What is ${c}'s year-over-year revenue growth rate?`, hint: "percentage" },
+  online_revenue:     { queryFn: (c) => `What is ${c}'s online or digital revenue?`, hint: "currency" },
 };
 
 async function queryValyu(query: string, apiKey: string): Promise<string | null> {
@@ -132,12 +141,12 @@ async function queryValyu(query: string, apiKey: string): Promise<string | null>
       search_type: "all",
       max_num_results: 5,
     }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!res.ok) return null;
 
   const json = await res.json();
-  // Valyu returns results[].content — take the first result's content
   const results = json?.results ?? json?.data ?? [];
   if (Array.isArray(results) && results.length > 0) {
     return results[0]?.content ?? results[0]?.text ?? JSON.stringify(results[0]);
@@ -155,22 +164,13 @@ const fetchFinancialsTool = tool(
   async (args) => {
     const apiKey = process.env.VALYU_API_KEY;
     if (!apiKey) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ error: "VALYU_API_KEY is not set" }),
-          },
-        ],
-      };
+      return textResult({ error: "VALYU_API_KEY is not set" });
     }
 
     const fieldNames = Object.keys(VALYU_QUERIES);
-    const queryTexts = fieldNames.map((f) =>
-      VALYU_QUERIES[f](args.company_name)
-    );
+    const entries = fieldNames.map((f) => VALYU_QUERIES[f]);
+    const queryTexts = entries.map((e) => e.queryFn(args.company_name));
 
-    // Fire all queries in parallel with resilience
     const settled = await Promise.allSettled(
       queryTexts.map((q) => queryValyu(q, apiKey))
     );
@@ -178,9 +178,9 @@ const fetchFinancialsTool = tool(
     const fields: Record<string, DataPointInput> = {};
     for (let i = 0; i < fieldNames.length; i++) {
       const result = settled[i];
-      const rawValue =
-        result.status === "fulfilled" ? result.value : null;
-      const parsed = parseNumeric(rawValue);
+      const rawValue = result.status === "fulfilled" ? result.value : null;
+      // TODO: confidence_score should factor in Valyu relevance_score
+      const parsed = parseNumeric(rawValue, entries[i].hint);
       if (parsed !== null) {
         fields[fieldNames[i]] = {
           value: parsed,
@@ -196,9 +196,7 @@ const fetchFinancialsTool = tool(
       fields,
     };
 
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(companyData) }],
-    };
+    return textResult(companyData);
   }
 );
 
@@ -226,14 +224,7 @@ const scrapeCompanyTool = tool(
   async (args) => {
     const apiKey = process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ error: "FIRECRAWL_API_KEY is not set" }),
-          },
-        ],
-      };
+      return textResult({ error: "FIRECRAWL_API_KEY is not set" });
     }
 
     const slug = slugify(args.company_name);
@@ -264,28 +255,21 @@ const scrapeCompanyTool = tool(
           },
         },
       }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              error: `Firecrawl request failed (${res.status})`,
-              details: errText,
-            }),
-          },
-        ],
-      };
+      return textResult({
+        error: `Firecrawl request failed (${res.status})`,
+        details: errText.slice(0, 500),
+      });
     }
 
     const json = await res.json();
     const extracted: CrunchbaseExtraction =
       json?.data?.extract ?? json?.extract ?? {};
 
-    // Map extracted fields to CompanyData
     const fields: Record<string, DataPointInput> = {};
 
     const mapping: Array<{ key: string; raw: unknown }> = [
@@ -297,7 +281,7 @@ const scrapeCompanyTool = tool(
     ];
 
     for (const { key, raw } of mapping) {
-      const parsed = _parse_money(raw);
+      const parsed = parseNumeric(raw, "currency");
       if (parsed !== null) {
         fields[key] = {
           value: parsed,
@@ -313,9 +297,7 @@ const scrapeCompanyTool = tool(
       fields,
     };
 
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(companyData) }],
-    };
+    return textResult(companyData);
   }
 );
 
@@ -348,31 +330,10 @@ const runCalculationTool = tool(
       .describe("The service type to load methodology for"),
   },
   async (args) => {
-    // Load methodology from Supabase
-    const { data: methodologyRow, error } = await supabase
-      .from("methodologies")
-      .select("*")
-      .eq("service_type", args.service_type)
-      .eq("enabled", true)
-      .order("version", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error || !methodologyRow) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              error: `No active methodology found for service_type="${args.service_type}"`,
-              details: error?.message ?? "No rows returned",
-            }),
-          },
-        ],
-      };
+    const methodology = await loadActiveMethodology(args.service_type);
+    if (!methodology) {
+      return textResult({ error: `No active methodology found for service_type="${args.service_type}"` });
     }
-
-    const methodology = methodologyRow as MethodologyConfig;
 
     const companyData: CompanyData = {
       company_name: args.company_data.company_name,
@@ -382,9 +343,7 @@ const runCalculationTool = tool(
 
     const result = calculate(companyData, methodology);
 
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(result) }],
-    };
+    return textResult(result);
   }
 );
 
