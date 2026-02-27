@@ -3,8 +3,6 @@
 import { useEffect, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import type { Spec } from "@json-render/core";
-import { useJsonRenderMessage } from "@json-render/react";
 import { useStreamStore } from "../stores/stream-store";
 import { useCaseStore, type CalculationResult } from "../stores/case-store";
 import { useActivityStore } from "../stores/activity-store";
@@ -18,7 +16,7 @@ const DEFAULT_PIPELINE_STEPS = [
   { id: "financials", label: "Fetching financial data", status: "pending" as const },
   { id: "benchmarks", label: "Researching benchmarks", status: "pending" as const },
   { id: "calculate", label: "Running ROI calculations", status: "pending" as const },
-  { id: "narrative", label: "Generating narrative", status: "pending" as const },
+  { id: "narrative", label: "Finalizing results", status: "pending" as const },
 ];
 
 // ---------------------------------------------------------------------------
@@ -96,7 +94,6 @@ export function usePipelineStream(caseId: string | null) {
             status: "running",
           });
         } else if (d.activityType === "tool_complete") {
-          // Find and update the matching tool_start entry
           const entries = activity.entries;
           const startEntry = entries.find(
             (e) => e.tool === d.tool && e.status === "running"
@@ -105,7 +102,6 @@ export function usePipelineStream(caseId: string | null) {
             activity.updateEntry(startEntry.id, { status: "done", type: "tool_complete" });
           }
         } else if (d.activityType === "milestone" && d.title === "Analysis complete") {
-          // Sweep any remaining running entries to done
           for (const entry of activity.entries) {
             if (entry.status === "running") {
               activity.updateEntry(entry.id, { status: "done" });
@@ -154,44 +150,34 @@ export function usePipelineStream(caseId: string | null) {
     if (!caseId || hasStarted.current) return;
     hasStarted.current = true;
 
-    // Reset stores for a fresh case
     useCaseStore.getState().reset();
     useStreamStore.getState().reset();
     useActivityStore.getState().reset();
 
-    // Initialize pipeline steps so the PipelineTimeline renders them
     useStreamStore.getState().initializeSteps(DEFAULT_PIPELINE_STEPS);
-
     setConnectionStatus("connecting");
 
-    // Send a trigger message to start the pipeline
     sendMessage({ text: "start" });
   }, [caseId, sendMessage, setConnectionStatus]);
 
-  // Extract narrative text and calculation results from assistant messages
+  // Extract calculation results from assistant messages.
+  // The LLM's text output is intentionally NOT shown in the UI —
+  // results are rendered from the structured CalculationResult data.
   useEffect(() => {
     if (messages.length === 0) return;
 
+    // Store narrative text for Supabase persistence (not displayed in UI)
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role !== "assistant") return;
-
-    // Build full narrative from text parts and store it.
-    // This feeds Supabase persistence (via the orchestrator's result.text) and
-    // serves as fallback if json-render spec is not available.
-    const textParts: string[] = [];
-    for (const part of lastMsg.parts) {
-      if (part.type === "text") {
-        textParts.push(part.text);
+    if (lastMsg.role === "assistant") {
+      const textParts: string[] = [];
+      for (const part of lastMsg.parts) {
+        if (part.type === "text") textParts.push(part.text);
       }
-    }
-    const fullText = textParts.join("");
-
-    if (fullText) {
-      useCaseStore.getState().setNarrative(fullText);
+      const fullText = textParts.join("");
+      if (fullText) useCaseStore.getState().setNarrative(fullText);
     }
 
-    // Check all assistant messages for calculation results in tool parts.
-    // run_calculation may not be in the last message if the LLM does further tool calls.
+    // Extract CalculationResult from tool output parts
     for (const msg of messages) {
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts) {
@@ -217,20 +203,9 @@ export function usePipelineStream(caseId: string | null) {
     else if (status === "error") setConnectionStatus("disconnected");
   }, [status, setConnectionStatus]);
 
-  // Extract json-render spec from the last assistant message's parts.
-  // pipeJsonRender on the server converts JSONL patches into spec data parts
-  // that arrive in the message parts array alongside text parts.
-  const lastAssistantMsg = messages.findLast((m) => m.role === "assistant");
-  const lastParts = lastAssistantMsg?.parts ?? [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { spec, hasSpec } = useJsonRenderMessage(lastParts as any);
-
   return {
     isConnected: status === "streaming",
     status,
     stop,
-    messages,
-    spec: spec as Spec | null,
-    hasSpec,
   };
 }

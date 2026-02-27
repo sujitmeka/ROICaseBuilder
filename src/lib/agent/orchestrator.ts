@@ -1,16 +1,15 @@
 /**
  * CPROIOrchestrator — Agentic ROI pipeline using Vercel AI SDK streamText().
  *
- * Replaces the manual tool-use loop with streamText() + stopWhen(stepCountIs(20)).
+ * Uses streamText() + stopWhen(stepCountIs(20)) to run the multi-step pipeline.
  * Emits custom data parts (data-activity, data-pipeline) via createUIMessageStream
- * so the frontend can show real-time progress alongside the streamed LLM output.
+ * so the frontend can show real-time progress. Results are rendered from the
+ * structured CalculationResult data, not from the LLM's text output.
  */
 
 import { streamText, stepCountIs, createUIMessageStream } from "ai";
-import { pipeJsonRender } from "@json-render/core";
 import { anthropic } from "@ai-sdk/anthropic";
 import { tools } from "./tools";
-import { catalog } from "../ui/catalog";
 
 // ---------------------------------------------------------------------------
 // Custom data part types (must match frontend expectations)
@@ -126,23 +125,8 @@ no recent data exists.
    - Do the numbers make sense? Flag anything suspicious.
    - Check that total impact is reasonable for the company's revenue.
 
-5. **Generate structured output** — Using the calculation results, generate your final output
-   using the UI component system described below. Write a brief 1-2 sentence summary, then
-   output ALL UI components as JSONL patches inside a single \`\`\`spec code fence.
-   Do NOT use plain markdown for the final output — use the component system.
-
-   Inside the \`\`\`spec fence, follow this exact order:
-   - Start with exactly ONE ROIStatement (the hero one-liner with investment, impact, and ROI multiple)
-   - Then a NarrativeBlock with heading "Executive Summary" (2-3 sentence SCR framing)
-   - Then MetricCards for each non-skipped KPI, ordered by impact (highest first)
-   - Then a NarrativeBlock with heading "3-Year Outlook" (1-2 sentences)
-   - Then 3 ProjectionRows (Year 1, Year 2, Year 3) with realization curve data
-   - Then ConfidenceNotes for any medium/low confidence data sources
-   - Finally SkippedKPIs for any KPIs that couldn't be calculated
-
-   Keep ALL text concise and copy-pasteable. These outputs will be pasted into client slide decks.
-   NarrativeBlock bodies should be 2-3 sentences maximum. Format all dollar values compactly
-   ($4.2M, $350K). Format percentages without decimals where possible.
+5. **Done** — The frontend renders structured results from the calculation data.
+   You do NOT need to format or present the results. Just confirm the analysis is complete.
 
 ## Key Principles
 
@@ -151,26 +135,7 @@ no recent data exists.
 - Prefer company-reported data over benchmarks. Use benchmarks only for gaps.
 - If a field can't be found anywhere, skip the KPI gracefully — don't fabricate data.
 - Think step by step. After each tool call, reason about what you learned and what to do next.
-
-## UI Component System
-
-${catalog.prompt({
-  mode: "chat",
-  customRules: [
-    "Always start with exactly ONE ROIStatement component.",
-    "Follow with MetricCards ordered by impact (highest dollar impact first).",
-    "Use NarrativeBlock sparingly — only for Executive Summary and 3-Year Outlook headings.",
-    "Generate exactly 3 ProjectionRows for the 3-year outlook.",
-    "Add ConfidenceNotes for any data points with medium or low confidence.",
-    "Add SkippedKPIs at the end for any KPIs that were skipped.",
-    "Format all currency values compactly: $4.2M, $350K, $1.2B.",
-    "Format percentages without unnecessary decimals: 35%, 2.1%.",
-    "Keep NarrativeBlock body text to 2-3 sentences maximum.",
-    "Every MetricCard must include a real source — never fabricate sources.",
-    "Output ALL components in a single ```spec fence — do NOT split across multiple fences.",
-    "The ```spec fence should be your FINAL output after all tool calls are complete.",
-  ],
-})}
+- Keep your reasoning concise — the user does not see your text output.
 `;
 }
 
@@ -200,7 +165,6 @@ export function createPipelineStream(params: {
   const { companyName, industry, serviceType, caseId } = params;
 
   // Deferred promise — resolved when stream completes, rejected on error.
-  // The route awaits this to persist results to Supabase.
   // Using manual pattern for Node 20 compatibility (Promise.withResolvers requires Node 22+).
   let resolveResult: (value: OrchestratorResult) => void;
   let rejectResult: (reason: Error) => void;
@@ -213,8 +177,7 @@ export function createPipelineStream(params: {
     `Analyze the ROI case for ${companyName} in the ${industry} industry ` +
     `using the ${serviceType} methodology.\n\n` +
     `Follow your process: load the methodology first, then gather financial ` +
-    `data, fill gaps with web search benchmarks, run the calculation, and ` +
-    `generate the SCR narrative. Think carefully at each step.`;
+    `data, fill gaps with web search benchmarks, and run the calculation.`;
 
   let scenarios: Record<string, unknown> = {};
   let benchmarksStarted = false;
@@ -263,7 +226,6 @@ export function createPipelineStream(params: {
             const stepId = TOOL_STEP_MAP[toolName];
             const toolCallId = `tool-${toolName}-${Date.now()}`;
 
-            // Emit tool start activity
             writer.write({
               type: "data-activity",
               id: toolCallId,
@@ -275,7 +237,6 @@ export function createPipelineStream(params: {
               },
             } as ActivityDataPart);
 
-            // Update pipeline step
             if (stepId) {
               writer.write({
                 type: "data-pipeline",
@@ -285,12 +246,9 @@ export function createPipelineStream(params: {
             }
           },
 
-          // onStepFinish captures provider-managed tools (e.g. web_search)
-          // that don't fire experimental_onToolCallStart/Finish callbacks.
           onStepFinish({ toolCalls }) {
             for (const tc of toolCalls) {
               if (tc.toolName === "web_search") {
-                // Mark benchmarks step active on first web_search
                 if (!benchmarksStarted) {
                   benchmarksStarted = true;
                   writer.write({
@@ -335,7 +293,6 @@ export function createPipelineStream(params: {
             const toolName = event.toolCall.toolName;
             const stepId = TOOL_STEP_MAP[toolName];
 
-            // Emit tool complete activity
             writer.write({
               type: "data-activity",
               id: `tool-${toolName}-done-${Date.now()}`,
@@ -347,7 +304,6 @@ export function createPipelineStream(params: {
               },
             } as ActivityDataPart);
 
-            // Update pipeline step to completed
             if (stepId) {
               writer.write({
                 type: "data-pipeline",
@@ -356,7 +312,7 @@ export function createPipelineStream(params: {
               } as PipelineDataPart);
             }
 
-            // Capture calculation results (last-write-wins if called multiple times)
+            // Capture calculation results
             if (toolName === "run_calculation" && event.success === true) {
               const output = event.output;
               if (
@@ -370,22 +326,20 @@ export function createPipelineStream(params: {
           },
         });
 
-        // Mark narrative step as active — the LLM is now generating text
+        // Mark finalizing step as active
         writer.write({
           type: "data-pipeline",
           id: "step-narrative",
           data: { stepId: "narrative", status: "active" },
         } as PipelineDataPart);
 
-        // Merge the LLM stream into the UI stream.
-        // pipeJsonRender separates JSONL patches (for json-render components)
-        // from regular text in the stream, converting them to spec data parts.
-        writer.merge(pipeJsonRender(result.toUIMessageStream()));
+        // Merge the LLM stream into the UI stream (carries tool results to the client)
+        writer.merge(result.toUIMessageStream());
 
-        // Wait for the stream to complete, then resolve with results
+        // Wait for the stream to complete
         const finalText = await result.text;
 
-        // Emit narrative step completed
+        // Emit finalizing step completed
         writer.write({
           type: "data-pipeline",
           id: "step-narrative",
