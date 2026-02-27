@@ -1,133 +1,157 @@
-"""Tool functions that wrap existing providers and engine for agent use.
+"""Custom tools for the CPROI agent — registered with Claude Agent SDK.
 
-Each function accepts and returns plain dicts (JSON-serializable) so they
-can be called by the Claude Agents SDK.
+Each tool returns MCP-compatible response format:
+{"content": [{"type": "text", "text": "<json_string>"}]}
 """
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
+from claude_agent_sdk import tool
+
 from backend.engine.calculator import CalculationEngine
 from backend.engine.result import CalculationResult
-from backend.methodology.loader import load_methodology, get_default_methodology
+from backend.methodology.loader import get_default_methodology
 from backend.methodology.schema import MethodologyConfig
 from backend.models.audit import DataPoint, SourceAttribution
 from backend.models.company_data import CompanyData
-from backend.models.enums import DataSourceTier, DataSourceType, Scenario
-from backend.providers.firecrawl_provider import FirecrawlProvider
+from backend.models.enums import DataSourceTier, DataSourceType
 from backend.providers.valyu_provider import ValyuProvider
-from backend.providers.websearch_provider import WebSearchProvider
+from backend.providers.firecrawl_provider import FirecrawlProvider
+
+logger = logging.getLogger(__name__)
 
 
-async def fetch_public_financials(company_name: str, industry: str) -> dict:
-    """Fetch public company financials via ValyuProvider.
+def _text_response(data: Any) -> dict:
+    """Wrap data in MCP tool response format."""
+    return {"content": [{"type": "text", "text": json.dumps(data, default=str)}]}
 
-    Returns a dict of field_name -> value for populated fields.
-    """
+
+@tool(
+    "fetch_financials",
+    "Fetch company financial data from SEC filings (public) or Crunchbase (private). "
+    "Returns populated fields with values and a list of data gaps.",
+    {"company_name": str, "industry": str},
+)
+async def fetch_financials(args: dict) -> dict:
+    company_name = args["company_name"]
+    industry = args["industry"]
+
+    # Try Valyu first (public companies / SEC filings)
     provider = ValyuProvider()
-    company_data = await provider.fetch(company_name, industry)
-    return _company_data_to_dict(company_data)
+    try:
+        company_data = await provider.fetch(company_name, industry)
+    except Exception as e:
+        logger.warning(f"Valyu failed for {company_name}, trying Firecrawl: {e}")
+        # Fall back to Firecrawl for private companies
+        provider = FirecrawlProvider()
+        try:
+            company_data = await provider.fetch(company_name, industry)
+        except Exception as e2:
+            logger.error(f"Both providers failed for {company_name}: {e2}")
+            return _text_response({
+                "company_name": company_name,
+                "industry": industry,
+                "fields": {},
+                "gaps": ["all_fields"],
+                "error": f"Could not fetch financial data: {e2}",
+            })
 
-
-async def scrape_private_company(company_name: str, industry: str) -> dict:
-    """Scrape private company data via FirecrawlProvider.
-
-    Returns a dict of field_name -> value for populated fields.
-    """
-    provider = FirecrawlProvider()
-    company_data = await provider.fetch(company_name, industry)
-    return _company_data_to_dict(company_data)
-
-
-async def search_benchmarks(industry: str, fields: list[str] | None = None) -> dict:
-    """Search for industry benchmark data via WebSearchProvider.
-
-    Returns a dict of field_name -> value for benchmark fields found.
-    """
-    provider = WebSearchProvider()
-    # WebSearchProvider.fetch requires company_name but uses industry for benchmarks
-    company_data = await provider.fetch(company_name="", industry=industry)
     result = _company_data_to_dict(company_data)
-    if fields:
-        result["fields"] = {k: result["fields"][k] for k in fields if k in result["fields"]}
-    return result
+    result["gaps"] = getattr(company_data, "_data_gaps", [])
+    return _text_response(result)
 
 
-def run_roi_calculation(company_data_dict: dict, service_type: str) -> dict:
-    """Run ROI calculation using CalculationEngine.
+@tool(
+    "scrape_company",
+    "Scrape private company data from Crunchbase/PitchBook via Firecrawl. "
+    "Use this when fetch_financials returns no data for a private company.",
+    {"company_name": str, "industry": str},
+)
+async def scrape_company(args: dict) -> dict:
+    company_name = args["company_name"]
+    industry = args["industry"]
 
-    Args:
-        company_data_dict: Dict with company_name, industry, and fields.
-        service_type: Service type to load methodology config for.
+    provider = FirecrawlProvider()
+    try:
+        company_data = await provider.fetch(company_name, industry)
+    except Exception as e:
+        return _text_response({
+            "company_name": company_name,
+            "fields": {},
+            "gaps": ["all_fields"],
+            "error": str(e),
+        })
 
-    Returns:
-        Dict with scenarios, data_completeness, missing_inputs, etc.
-    """
-    company_data = _dict_to_company_data(company_data_dict)
-    methodology = _load_methodology_for_service(service_type)
+    result = _company_data_to_dict(company_data)
+    result["gaps"] = getattr(company_data, "_data_gaps", [])
+    return _text_response(result)
+
+
+@tool(
+    "run_calculation",
+    "Run ROI calculation against company data using the methodology engine. "
+    "Returns 3 scenarios (conservative/moderate/aggressive) with full audit trail. "
+    "The company_data should include all available fields gathered from financial "
+    "data and benchmark research.",
+    {"company_data": dict, "service_type": str},
+)
+async def run_calculation(args: dict) -> dict:
+    company_data = _dict_to_company_data(args["company_data"])
+    methodology = get_default_methodology()
     engine = CalculationEngine()
     result = engine.calculate(company_data, methodology)
-    return _calculation_result_to_dict(result)
+    return _text_response(_calculation_result_to_dict(result))
 
 
-def generate_narrative(calculation_result_dict: dict, company_data_dict: dict) -> str:
-    """Generate an SCR narrative from calculation results.
+@tool(
+    "load_methodology",
+    "Load the methodology configuration for a service type. Returns the full "
+    "methodology config including KPI definitions, required inputs, benchmark "
+    "ranges, weights, and realization curve. Use this FIRST to understand what "
+    "data fields you need to gather.",
+    {"service_type": str},
+)
+async def load_methodology(args: dict) -> dict:
+    methodology = get_default_methodology()
+    # Return a simplified view focused on what the agent needs
+    kpis = []
+    all_inputs: set[str] = set()
+    for kpi in methodology.enabled_kpis():
+        kpi_info = {
+            "id": kpi.id,
+            "label": kpi.label,
+            "weight": kpi.weight,
+            "formula": kpi.formula,
+            "inputs": kpi.inputs,
+            "benchmark_ranges": {
+                "conservative": kpi.benchmark_ranges.conservative,
+                "moderate": kpi.benchmark_ranges.moderate,
+                "aggressive": kpi.benchmark_ranges.aggressive,
+            },
+            "benchmark_source": kpi.benchmark_source,
+        }
+        kpis.append(kpi_info)
+        all_inputs.update(kpi.inputs)
 
-    Placeholder implementation — returns a template narrative.
-    Full implementation will use Claude to generate the narrative.
-    """
-    company_name = company_data_dict.get("company_name", "the company")
-    scenarios = calculation_result_dict.get("scenarios", {})
-
-    moderate = scenarios.get("moderate", {})
-    total_impact = moderate.get("total_annual_impact", 0)
-    roi_pct = moderate.get("roi_percentage")
-
-    roi_line = f" ({roi_pct:.0f}% ROI)" if roi_pct else ""
-
-    return (
-        f"## ROI Analysis for {company_name}\n\n"
-        f"**Situation**: {company_name} operates in a competitive market where "
-        f"customer experience is a key differentiator.\n\n"
-        f"**Complication**: Without investment in experience transformation, "
-        f"the company risks losing market share and revenue.\n\n"
-        f"**Resolution**: Our analysis projects a moderate-scenario annual impact "
-        f"of ${total_impact:,.0f}{roi_line} through targeted experience improvements."
-    )
-
-
-def store_case(case_id: str, result: dict) -> dict:
-    """Store a case result to persistent storage.
-
-    Placeholder — will be replaced with Supabase integration.
-    """
-    return {
-        "case_id": case_id,
-        "status": "stored",
-        "stored": True,
-    }
-
-
-def load_methodology_config(service_type: str) -> dict:
-    """Load methodology configuration for a given service type.
-
-    Returns the methodology config as a serializable dict.
-    """
-    methodology = _load_methodology_for_service(service_type)
-    return methodology.model_dump()
+    return _text_response({
+        "id": methodology.id,
+        "name": methodology.name,
+        "version": methodology.version,
+        "kpis": kpis,
+        "required_inputs": sorted(all_inputs),
+        "realization_curve": methodology.realization_curve,
+        "confidence_discounts": methodology.confidence_discounts.model_dump(),
+    })
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Helpers (same logic as before, just moved to support new tool format)
 # ---------------------------------------------------------------------------
-
-def _load_methodology_for_service(service_type: str) -> MethodologyConfig:
-    """Load the methodology config matching a service type."""
-    # Currently only one methodology; extend with a lookup when more are added
-    return get_default_methodology()
-
 
 def _company_data_to_dict(company_data: CompanyData) -> dict:
     """Convert CompanyData to a serializable dict."""
@@ -165,7 +189,7 @@ def _dict_to_company_data(d: dict) -> CompanyData:
                 confidence_score=field_data.get("confidence_score", 0.5),
                 source=SourceAttribution(
                     source_type=DataSourceType.MANUAL_OVERRIDE,
-                    source_label="Reconstructed from agent tool dict",
+                    source_label="Reconstructed from agent tool response",
                 ),
             )
             setattr(company_data, field_name, dp)
@@ -181,6 +205,8 @@ def _calculation_result_to_dict(result: CalculationResult) -> dict:
             kpi_results.append({
                 "kpi_id": entry.kpi_id,
                 "kpi_label": entry.kpi_label,
+                "formula_description": entry.formula_description,
+                "inputs_used": entry.inputs_used,
                 "raw_impact": entry.raw_impact,
                 "adjusted_impact": entry.adjusted_impact,
                 "weighted_impact": entry.weighted_impact,
