@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from backend.orchestrator.agent import CPROIOrchestrator
 from backend.streaming import StreamManager
+from backend.streaming.events import PipelineEventType, SSEEvent
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CPROI API", version="0.1.0")
 
@@ -40,9 +47,40 @@ class CreateCaseResponse(BaseModel):
     status: str
 
 
+async def run_pipeline(case_id: str, company_name: str, industry: str, service_type: str):
+    """Background task: run the full ROI pipeline and emit SSE events."""
+    orchestrator = CPROIOrchestrator(stream_manager=stream_manager)
+    try:
+        result = await orchestrator.run(
+            company_name=company_name,
+            industry=industry,
+            service_type=service_type,
+            case_id=case_id,
+        )
+        _cases[case_id]["status"] = "completed"
+        _cases[case_id]["result"] = result
+
+        # Emit pipeline completed
+        await stream_manager.emit(case_id, SSEEvent(
+            event_type=PipelineEventType.PIPELINE_COMPLETED,
+            data={"case_id": case_id, "status": "completed"},
+            sequence_id=999,
+        ))
+    except Exception as e:
+        logger.exception(f"Pipeline failed for case {case_id}")
+        _cases[case_id]["status"] = "error"
+        _cases[case_id]["error"] = str(e)
+
+        await stream_manager.emit(case_id, SSEEvent(
+            event_type=PipelineEventType.PIPELINE_ERROR,
+            data={"case_id": case_id, "error": str(e)},
+            sequence_id=999,
+        ))
+
+
 @app.post("/api/cases", response_model=CreateCaseResponse)
-async def create_case(body: CreateCaseRequest):
-    """Create a new ROI calculation case."""
+async def create_case(body: CreateCaseRequest, background_tasks: BackgroundTasks):
+    """Create a new ROI calculation case and start the pipeline."""
     case_id = str(uuid4())
     _cases[case_id] = {
         "case_id": case_id,
@@ -52,6 +90,12 @@ async def create_case(body: CreateCaseRequest):
         "service_type": body.service_type,
         "result": None,
     }
+
+    # Start pipeline in background so the SSE stream can pick up events
+    background_tasks.add_task(
+        run_pipeline, case_id, body.company_name, body.industry, body.service_type
+    )
+
     return CreateCaseResponse(case_id=case_id, status="started")
 
 

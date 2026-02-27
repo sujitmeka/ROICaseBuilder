@@ -11,6 +11,7 @@ version = "0.1.0"
 description = "Client Partner ROI Calculator"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.80.0",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "valyu>=0.1.0",

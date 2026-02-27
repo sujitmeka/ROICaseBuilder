@@ -1,66 +1,70 @@
-"""Tests for WebSearchProvider -- all mocked, no API keys needed."""
+"""Tests for WebSearchProvider -- uses hardcoded industry benchmarks."""
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 
 from backend.models.enums import DataSourceTier
-from backend.providers.websearch_provider import WebSearchProvider
+from backend.providers.websearch_provider import WebSearchProvider, INDUSTRY_DEFAULTS
 
 
 class TestWebSearchProvider:
 
     @pytest.mark.asyncio
-    async def test_fetches_benchmark_data(self):
-        with patch("backend.providers.websearch_provider.httpx.AsyncClient") as MockClient:
-            mock_client = AsyncMock()
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.json.return_value = {
-                "web": {
-                    "results": [
-                        {"description": "The average ecommerce conversion rate is 2.5% in 2024."},
-                        {"description": "Retail conversion rates average around 3.1% globally."},
-                    ]
-                }
-            }
-            mock_client.get = AsyncMock(return_value=mock_resp)
-            MockClient.return_value = mock_client
+    async def test_fetches_benchmark_data_for_retail(self):
+        provider = WebSearchProvider()
+        data = await provider.fetch("AcmeCorp", "retail")
 
-            provider = WebSearchProvider()
-            provider._client = mock_client
-            data = await provider.fetch("AcmeCorp", "retail")
+        assert data.current_conversion_rate is not None
+        assert data.current_conversion_rate.value == pytest.approx(0.025)
+        assert data.current_conversion_rate.confidence_tier == DataSourceTier.INDUSTRY_BENCHMARK
 
-            assert data.current_conversion_rate is not None
-            assert data.current_conversion_rate.value == pytest.approx(0.025)
-            assert data.current_conversion_rate.confidence_tier == DataSourceTier.INDUSTRY_BENCHMARK
+        assert data.current_aov is not None
+        assert data.current_aov.value == pytest.approx(160.0)
+
+        assert data.current_churn_rate is not None
+        assert data.current_nps is not None
+        assert data.customer_lifetime_value is not None
+        assert data.cost_per_contact is not None
 
     @pytest.mark.asyncio
-    async def test_handles_empty_results(self):
-        with patch("backend.providers.websearch_provider.httpx.AsyncClient") as MockClient:
-            mock_client = AsyncMock()
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.json.return_value = {"web": {"results": []}}
-            mock_client.get = AsyncMock(return_value=mock_resp)
-            MockClient.return_value = mock_client
+    async def test_fetches_benchmark_data_for_saas(self):
+        provider = WebSearchProvider()
+        data = await provider.fetch("SaaSCo", "saas-tech")
 
-            provider = WebSearchProvider()
-            provider._client = mock_client
-            data = await provider.fetch("AcmeCorp", "retail")
-
-            # Should not crash, gaps recorded
-            assert hasattr(data, "_data_gaps")
+        assert data.current_conversion_rate.value == pytest.approx(0.03)
+        assert data.current_aov.value == pytest.approx(250.0)
+        assert data.current_churn_rate.value == pytest.approx(0.05)
 
     @pytest.mark.asyncio
-    async def test_handles_api_failure(self):
-        with patch("backend.providers.websearch_provider.httpx.AsyncClient") as MockClient:
-            mock_client = AsyncMock()
-            mock_client.get = AsyncMock(side_effect=Exception("Network error"))
-            MockClient.return_value = mock_client
+    async def test_falls_back_to_retail_for_unknown_industry(self):
+        provider = WebSearchProvider()
+        data = await provider.fetch("UnknownCo", "widgets-manufacturing")
 
-            provider = WebSearchProvider()
-            provider._client = mock_client
-            data = await provider.fetch("AcmeCorp", "retail")
+        # Should fall back to retail defaults
+        assert data.current_conversion_rate is not None
+        assert data.current_conversion_rate.value == pytest.approx(0.025)
 
-            # Should not crash
-            assert data.company_name == "AcmeCorp"
+    @pytest.mark.asyncio
+    async def test_no_data_gaps_for_known_industry(self):
+        provider = WebSearchProvider()
+        data = await provider.fetch("AcmeCorp", "retail")
+
+        assert hasattr(data, "_data_gaps")
+        assert len(data._data_gaps) == 0
+
+    @pytest.mark.asyncio
+    async def test_health_check_always_passes(self):
+        provider = WebSearchProvider()
+        assert await provider.health_check() is True
+
+    @pytest.mark.asyncio
+    async def test_all_industries_have_all_fields(self):
+        """Every industry in INDUSTRY_DEFAULTS should have all benchmark fields."""
+        provider = WebSearchProvider()
+        for industry in INDUSTRY_DEFAULTS:
+            data = await provider.fetch("TestCo", industry)
+            assert data.current_conversion_rate is not None, f"{industry} missing conversion_rate"
+            assert data.current_aov is not None, f"{industry} missing aov"
+            assert data.current_churn_rate is not None, f"{industry} missing churn_rate"
+            assert data.current_nps is not None, f"{industry} missing nps"
+            assert data.customer_lifetime_value is not None, f"{industry} missing clv"
+            assert data.cost_per_contact is not None, f"{industry} missing cost_per_contact"

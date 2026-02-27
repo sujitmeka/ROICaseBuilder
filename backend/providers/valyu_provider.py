@@ -60,7 +60,7 @@ class ValyuProvider(ProviderBase):
             response = self._client.search(
                 query="Apple revenue",
                 search_type="all",
-                num_results=1,
+                max_num_results=1,
             )
             return bool(response and getattr(response, "results", None) is not None)
         except Exception as e:
@@ -77,7 +77,7 @@ class ValyuProvider(ProviderBase):
                 response = self._client.search(
                     query=query_text,
                     search_type="all",
-                    num_results=5,
+                    max_num_results=5,
                 )
 
                 results = getattr(response, "results", None) or []
