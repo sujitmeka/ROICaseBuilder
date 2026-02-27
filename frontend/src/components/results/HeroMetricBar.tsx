@@ -6,7 +6,7 @@ import type { Scenario } from "../../stores/case-store";
 interface Props {
   totalImpact: number;
   roi: number;
-  revenueAtRisk: number;
+  roiMultiple: number;
   threeYearCumulative: number;
   scenario: Scenario;
 }
@@ -14,7 +14,7 @@ interface Props {
 export function HeroMetricBar({
   totalImpact,
   roi,
-  revenueAtRisk,
+  roiMultiple,
   threeYearCumulative,
 }: Props) {
   const metrics = [
@@ -27,8 +27,8 @@ export function HeroMetricBar({
       value: formatPercent(roi),
     },
     {
-      label: "Revenue at Risk",
-      value: formatCurrency(revenueAtRisk),
+      label: "ROI Multiple",
+      value: `${roiMultiple.toFixed(1)}x`,
     },
     {
       label: "3-Year Cumulative",

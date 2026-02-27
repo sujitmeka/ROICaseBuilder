@@ -25,23 +25,22 @@ export function ResultsLayout({ caseId }: Props) {
   }
 
   const scenarioData = results.scenarios[activeScenario];
-  const realization = results.realization;
-  const threeYearCumulative =
-    scenarioData.totalImpact *
-    (realization.year1 + realization.year2 + realization.year3);
+  const threeYearCumulative = scenarioData.cumulative_3yr_impact;
 
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-semibold">ROI Case</h1>
+            <h1 className="text-xl font-semibold">
+              {results.company_name ? `ROI Case: ${results.company_name}` : "ROI Case"}
+            </h1>
             <ScenarioToggle />
           </div>
           <HeroMetricBar
-            totalImpact={scenarioData.totalImpact}
-            roi={scenarioData.roi}
-            revenueAtRisk={scenarioData.revenueAtRisk}
+            totalImpact={scenarioData.total_annual_impact}
+            roi={scenarioData.roi_percentage}
+            roiMultiple={scenarioData.roi_multiple}
             threeYearCumulative={threeYearCumulative}
             scenario={activeScenario}
           />

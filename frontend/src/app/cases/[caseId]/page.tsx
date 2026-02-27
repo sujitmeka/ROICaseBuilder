@@ -1,37 +1,22 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect } from "react";
 import { useEventStream } from "../../../hooks/use-event-stream";
 import { useStreamStore } from "../../../stores/stream-store";
 import { useCaseStore } from "../../../stores/case-store";
-import { PipelineTimeline } from "../../../components/streaming/PipelineTimeline";
+import { ActivityFeed } from "../../../components/streaming/ActivityFeed";
 import { NarrativeStream } from "../../../components/streaming/NarrativeStream";
 import { ResultsLayout } from "../../../components/results/ResultsLayout";
-
-const PIPELINE_STEPS = [
-  { id: "classify", label: "Identifying company type", status: "pending" as const },
-  { id: "financials", label: "Fetching financial data", status: "pending" as const },
-  { id: "benchmarks", label: "Searching industry benchmarks", status: "pending" as const },
-  { id: "merge", label: "Merging and resolving data", status: "pending" as const },
-  { id: "calculate", label: "Running ROI calculations", status: "pending" as const },
-  { id: "narrative", label: "Generating executive narrative", status: "pending" as const },
-];
 
 export default function CasePage() {
   const params = useParams();
   const caseId = params.caseId as string;
 
-  const pipelineSteps = useStreamStore((s) => s.pipelineSteps);
   const connectionStatus = useStreamStore((s) => s.connectionStatus);
-  const initializeSteps = useStreamStore((s) => s.initializeSteps);
+  const error = useStreamStore((s) => s.error);
   const results = useCaseStore((s) => s.calculationResult);
   const narrative = useCaseStore((s) => s.narrative);
-
-  // Initialize pipeline steps on mount
-  useEffect(() => {
-    initializeSteps(PIPELINE_STEPS);
-  }, [initializeSteps]);
+  const companyName = useCaseStore((s) => s.companyName);
 
   // Connect to SSE stream
   useEventStream(caseId);
@@ -47,7 +32,7 @@ export default function CasePage() {
       <div className="max-w-2xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
           <h1 className="text-2xl font-semibold text-gray-900">
-            Analyzing ROI Case
+            {companyName ? `Analyzing ${companyName}` : "Analyzing ROI Case"}
           </h1>
           <p className="mt-2 text-gray-500">
             {connectionStatus === "connecting"
@@ -56,10 +41,16 @@ export default function CasePage() {
               ? "Analysis in progress"
               : "Waiting for connection..."}
           </p>
+          {error && (
+            <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 text-left">
+              <p className="text-red-800 text-sm font-medium">Analysis Error</p>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <PipelineTimeline steps={pipelineSteps} />
+          <ActivityFeed />
         </div>
 
         {narrative && (
@@ -67,7 +58,7 @@ export default function CasePage() {
             <h2 className="text-lg font-medium text-gray-900 mb-4">
               Executive Narrative
             </h2>
-            <NarrativeStream text={narrative} />
+            <NarrativeStream text={narrative} streaming={connectionStatus === "connected"} />
           </div>
         )}
       </div>

@@ -12,6 +12,7 @@ import { ServiceTypeSelect } from "./ServiceTypeSelect";
 export function CaseInputForm() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
@@ -35,15 +36,21 @@ export function CaseInputForm() {
 
   async function onSubmit(data: CaseInput) {
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await fetch("/api/cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Server error (${res.status})`);
+      }
       const { caseId } = await res.json();
       router.push(`/cases/${caseId}`);
-    } catch {
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Something went wrong");
       setIsSubmitting(false);
     }
   }
@@ -106,6 +113,12 @@ export function CaseInputForm() {
           </p>
         )}
       </div>
+
+      {submitError && (
+        <p className="text-sm text-red-600 bg-red-50 rounded-md p-3">
+          {submitError}
+        </p>
+      )}
 
       <button
         type="submit"
