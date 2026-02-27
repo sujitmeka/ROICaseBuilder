@@ -50,13 +50,22 @@ class DataOrchestrator:
 
         if company_type in (CompanyType.PUBLIC, CompanyType.UNKNOWN):
             # Public or unknown -> try Valyu first
-            primary_data = await self._valyu.fetch(company_name, industry)
+            try:
+                primary_data = await self._valyu.fetch(company_name, industry)
+            except Exception as e:
+                logger.error(f"Valyu provider failed for '{company_name}': {e}")
         else:
             # Private -> try Firecrawl first
-            primary_data = await self._firecrawl.fetch(company_name, industry)
+            try:
+                primary_data = await self._firecrawl.fetch(company_name, industry)
+            except Exception as e:
+                logger.error(f"Firecrawl provider failed for '{company_name}': {e}")
 
         # Fill gaps with WebSearch benchmarks
-        secondary_data = await self._websearch.fetch(company_name, industry)
+        try:
+            secondary_data = await self._websearch.fetch(company_name, industry)
+        except Exception as e:
+            logger.error(f"WebSearch provider failed for '{company_name}': {e}")
 
         if primary_data is not None and secondary_data is not None:
             merged, conflicts = merge_company_data(primary_data, secondary_data)
