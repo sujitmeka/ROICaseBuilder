@@ -1,0 +1,99 @@
+{
+  "id": "experience-transformation-design",
+  "name": "Experience Transformation & Design",
+  "version": "1.0",
+  "applicable_industries": [
+    "ecommerce",
+    "retail",
+    "saas",
+    "financial_services",
+    "healthcare",
+    "travel_hospitality",
+    "telecom",
+    "insurance",
+    "media",
+    "cpg"
+  ],
+  "service_type": "experience-transformation-design",
+  "kpis": [
+    {
+      "id": "conversion_rate_lift",
+      "label": "Conversion Rate Improvement",
+      "weight": 0.30,
+      "formula": "current_online_revenue * lift_percentage",
+      "inputs": ["online_revenue"],
+      "benchmark_ranges": {
+        "conservative": 0.10,
+        "moderate": 0.20,
+        "aggressive": 0.35
+      },
+      "benchmark_source": "Baymard Institute 2025; Contentsquare Digital Experience Benchmarks",
+      "benchmark_source_url": "https://baymard.com/",
+      "enabled": true
+    },
+    {
+      "id": "aov_increase",
+      "label": "Average Order Value Increase",
+      "weight": 0.20,
+      "formula": "order_volume * (current_aov * lift_percentage)",
+      "inputs": ["order_volume", "current_aov"],
+      "benchmark_ranges": {
+        "conservative": 0.05,
+        "moderate": 0.10,
+        "aggressive": 0.20
+      },
+      "benchmark_source": "McKinsey Personalization Research 2023; Envive Commerce Statistics",
+      "enabled": true
+    },
+    {
+      "id": "churn_reduction",
+      "label": "Revenue Saved from Churn Reduction",
+      "weight": 0.20,
+      "formula": "current_churn_rate * reduction_percentage * customer_count * revenue_per_customer",
+      "inputs": ["current_churn_rate", "customer_count", "revenue_per_customer"],
+      "benchmark_ranges": {
+        "conservative": 0.05,
+        "moderate": 0.15,
+        "aggressive": 0.25
+      },
+      "benchmark_source": "Temkin Group / Qualtrics XM Institute; Vitally SaaS Churn Benchmarks",
+      "enabled": true
+    },
+    {
+      "id": "support_cost_savings",
+      "label": "Support Cost Savings",
+      "weight": 0.10,
+      "formula": "current_support_contacts * reduction_percentage * cost_per_contact",
+      "inputs": ["current_support_contacts", "cost_per_contact"],
+      "benchmark_ranges": {
+        "conservative": 0.10,
+        "moderate": 0.25,
+        "aggressive": 0.40
+      },
+      "benchmark_source": "Userpilot Support Ticket Research; Pylon Support Statistics 2025",
+      "enabled": true
+    },
+    {
+      "id": "nps_referral_revenue",
+      "label": "NPS-Linked Referral Revenue",
+      "weight": 0.20,
+      "formula": "annual_revenue * (nps_point_improvement / 7) * 0.01",
+      "inputs": ["annual_revenue"],
+      "benchmark_ranges": {
+        "conservative": 5,
+        "moderate": 10,
+        "aggressive": 15
+      },
+      "benchmark_source": "London School of Economics 2005; Temkin Group 2016; CustomerGauge NPS Benchmarks",
+      "enabled": true
+    }
+  ],
+  "realization_curve": [0.40, 0.70, 0.90],
+  "confidence_discounts": {
+    "company_reported": 1.0,
+    "industry_benchmark": 0.8,
+    "cross_industry": 0.6,
+    "estimated": 0.4
+  },
+  "enabled": true
+}
