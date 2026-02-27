@@ -46,6 +46,12 @@ class PipelineEventType(str, Enum):
     CONFLICT_DETECTED = "conflict_detected"
     CONFLICT_RESOLVED = "conflict_resolved"
 
+    # Agent activity (for "thinking" UX)
+    AGENT_THINKING = "agent_thinking"
+    TOOL_CALL_STARTED = "tool_call_started"
+    TOOL_CALL_COMPLETED = "tool_call_completed"
+    DATA_POINT_FOUND = "data_point_found"
+
     # Overrides and recalculation
     OVERRIDE_APPLIED = "override_applied"
     RECALCULATION_STARTED = "recalculation_started"
@@ -64,16 +70,14 @@ class SSEEvent:
     def to_sse_string(self) -> str:
         """Serialize to SSE wire format.
 
-        Format:
-            event: <type>
-            data: <json>
-            id: <seq>
-
-            (terminated by double newline)
+        Uses unnamed events (no ``event:`` line) so the browser
+        EventSource ``onmessage`` handler fires correctly.  The event
+        type is embedded inside the JSON ``data`` payload as ``type``.
         """
         payload = {
+            "type": self.event_type.value,
             **self.data,
             "timestamp": self.timestamp.isoformat(),
         }
         data_json = json.dumps(payload, default=str)
-        return f"event: {self.event_type.value}\ndata: {data_json}\nid: {self.sequence_id}\n\n"
+        return f"data: {data_json}\nid: {self.sequence_id}\n\n"

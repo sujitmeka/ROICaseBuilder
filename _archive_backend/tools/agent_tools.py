@@ -98,7 +98,35 @@ async def scrape_company(args: dict) -> dict:
     "Returns 3 scenarios (conservative/moderate/aggressive) with full audit trail. "
     "The company_data should include all available fields gathered from financial "
     "data and benchmark research.",
-    {"company_data": dict, "service_type": str},
+    {
+        "type": "object",
+        "properties": {
+            "company_data": {
+                "type": "object",
+                "description": "Company data with company_name, industry, and fields dict. Each field maps to {value, confidence_tier, confidence_score}.",
+                "properties": {
+                    "company_name": {"type": "string"},
+                    "industry": {"type": "string"},
+                    "fields": {
+                        "type": "object",
+                        "description": "Map of field_name to {value, confidence_tier, confidence_score}",
+                        "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": "number"},
+                                "confidence_tier": {"type": "string", "enum": ["company_reported", "industry_benchmark", "cross_industry", "estimated"]},
+                                "confidence_score": {"type": "number"},
+                            },
+                            "required": ["value"],
+                        },
+                    },
+                },
+                "required": ["company_name", "industry", "fields"],
+            },
+            "service_type": {"type": "string"},
+        },
+        "required": ["company_data", "service_type"],
+    },
 )
 async def run_calculation(args: dict) -> dict:
     company_data = _dict_to_company_data(args["company_data"])

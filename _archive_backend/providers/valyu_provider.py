@@ -3,6 +3,7 @@ via the Valyu.ai unified search API."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any, Optional
@@ -57,7 +58,8 @@ class ValyuProvider(ProviderBase):
 
     async def health_check(self) -> bool:
         try:
-            response = self._client.search(
+            response = await asyncio.to_thread(
+                self._client.search,
                 query="Apple revenue",
                 search_type="all",
                 max_num_results=1,
@@ -71,15 +73,34 @@ class ValyuProvider(ProviderBase):
         company_data = CompanyData(company_name=company_name, industry=industry)
         data_gaps: list[str] = []
 
-        for field_name, config in FIELD_QUERY_MAP.items():
-            query_text = config["query"].format(company=company_name)
-            try:
-                response = self._client.search(
-                    query=query_text,
-                    search_type="all",
-                    max_num_results=5,
-                )
+        # Build list of (field_name, config, query_text) for all queries
+        queries = [
+            (field_name, config, config["query"].format(company=company_name))
+            for field_name, config in FIELD_QUERY_MAP.items()
+        ]
 
+        # Fire all Valyu searches in parallel (non-blocking)
+        async def _fetch_one(query_text: str) -> Any:
+            return await asyncio.to_thread(
+                self._client.search,
+                query=query_text,
+                search_type="all",
+                max_num_results=5,
+            )
+
+        responses = await asyncio.gather(
+            *[_fetch_one(q) for _, _, q in queries],
+            return_exceptions=True,
+        )
+
+        # Process results
+        for (field_name, config, query_text), response in zip(queries, responses):
+            if isinstance(response, Exception):
+                logger.error(f"Valyu query failed for {field_name}: {response}")
+                data_gaps.append(field_name)
+                continue
+
+            try:
                 results = getattr(response, "results", None) or []
                 if not results:
                     logger.warning(f"Valyu returned no results for '{field_name}'")

@@ -1,53 +1,33 @@
-"""Tests for orchestrator agent wiring, subagent definitions, and custom tools."""
+"""Tests for orchestrator agent wiring and custom tools."""
 
 import json
 import pytest
 
-from claude_agent_sdk import AgentDefinition, SdkMcpTool
+from claude_agent_sdk import SdkMcpTool
 
-from backend.orchestrator.system_prompt import ORCHESTRATOR_SYSTEM_PROMPT
-from backend.orchestrator.subagents import (
-    FINANCIAL_DATA_AGENT,
-    BENCHMARK_RESEARCH_AGENT,
-    CALC_NARRATIVE_AGENT,
-    get_agent_definitions,
-)
+from backend.orchestrator.system_prompt import get_system_prompt
 from backend.tools.agent_tools import run_calculation, load_methodology
 
 
 class TestOrchestratorAgent:
     def test_system_prompt_references_methodology(self):
-        """ORCHESTRATOR_SYSTEM_PROMPT contains 'methodology' (case-insensitive)."""
-        assert "methodology" in ORCHESTRATOR_SYSTEM_PROMPT.lower()
+        """System prompt contains 'methodology' (case-insensitive)."""
+        prompt = get_system_prompt()
+        assert "methodology" in prompt.lower()
 
     def test_system_prompt_references_tools(self):
         """System prompt should mention the SDK tools."""
-        assert "load_methodology" in ORCHESTRATOR_SYSTEM_PROMPT
-        assert "fetch_financials" in ORCHESTRATOR_SYSTEM_PROMPT
-        assert "WebSearch" in ORCHESTRATOR_SYSTEM_PROMPT
-        assert "run_calculation" in ORCHESTRATOR_SYSTEM_PROMPT
+        prompt = get_system_prompt()
+        assert "load_methodology" in prompt
+        assert "fetch_financials" in prompt
+        assert "WebSearch" in prompt
+        assert "run_calculation" in prompt
 
-    def test_three_agent_definitions(self):
-        """get_agent_definitions() returns dict of 3 AgentDefinition objects."""
-        defs = get_agent_definitions()
-        assert isinstance(defs, dict)
-        assert len(defs) == 3
-        for name, agent_def in defs.items():
-            assert isinstance(agent_def, AgentDefinition)
-
-    def test_financial_agent_has_fetch_tools(self):
-        """Financial agent's tools list contains MCP tool names."""
-        assert "mcp__cproi__fetch_financials" in FINANCIAL_DATA_AGENT.tools
-        assert "mcp__cproi__scrape_company" in FINANCIAL_DATA_AGENT.tools
-
-    def test_benchmark_agent_has_websearch_tools(self):
-        """Benchmark agent's tools list contains WebSearch/WebFetch."""
-        assert "WebSearch" in BENCHMARK_RESEARCH_AGENT.tools
-        assert "WebFetch" in BENCHMARK_RESEARCH_AGENT.tools
-
-    def test_calc_agent_has_calculation_tools(self):
-        """Calc agent's tools list contains run_calculation."""
-        assert "mcp__cproi__run_calculation" in CALC_NARRATIVE_AGENT.tools
+    def test_system_prompt_contains_current_date(self):
+        """System prompt should include today's date."""
+        from datetime import date
+        prompt = get_system_prompt()
+        assert date.today().isoformat() in prompt
 
     def test_custom_tools_are_sdk_mcp_tools(self):
         """Tools should be SdkMcpTool instances."""

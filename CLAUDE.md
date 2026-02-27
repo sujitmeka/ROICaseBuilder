@@ -82,17 +82,18 @@ CP generates base ROI case
 
 ## Architecture & Tech Stack
 
-- **Agent framework:** Claude Agents SDK — orchestrates the multi-step data pull, benchmarking, calculation, and narrative generation
-  - Runs **locally**, powered by Claude Max subscription (no separate API billing for now)
-  - Built-in `WebSearch` + `WebFetch` tools handle industry benchmark research natively (no separate search API needed for MVP)
-  - Custom Python tools for ROI calculations
-  - Hooks system for audit logging
-- **Public company financials:** Valyu.ai — unified API for SEC filings (10-K, 10-Q, 8-K), earnings, balance sheets, income statements, cash flow, ratios. Natural language queries, structured JSON output, Claude Agent SDK integration.
+- **Agent framework:** TypeScript Agent SDK (`@anthropic-ai/claude-agent-sdk`) — orchestrates the multi-step data pull, benchmarking, calculation, and narrative generation
+  - Runs inside Next.js API routes (server-side), powered by `ANTHROPIC_API_KEY`
+  - Built-in `WebSearch` + `WebFetch` tools handle industry benchmark research natively
+  - Custom TypeScript tools for data fetching (Valyu, Firecrawl) and ROI calculations
+  - Pre/Post tool hooks emit SSE events for real-time progress streaming
+  - **Deployable to Vercel** — no Python backend needed, single Next.js app
+- **Public company financials:** Valyu.ai — unified API for SEC filings (10-K, 10-Q, 8-K), earnings, balance sheets, income statements, cash flow, ratios. Natural language queries, structured JSON output.
 - **Private company data:** Firecrawl — AI-powered web scraper for Crunchbase/PitchBook pages. Natural language extraction (no brittle CSS selectors). Avoids $199/mo Crunchbase API.
-- **Industry/CX benchmarks:** Claude itself via WebSearch + WebFetch (Agents SDK built-in). Can search for and cite Forrester, McKinsey, Baymard, etc. If quality proves insufficient, can add Perplexity Sonar later.
-- **Frontend:** Next.js 15+ (App Router), shadcn/ui + Tremor (data viz), Recharts, Zustand, React Hook Form + Zod
-- **Data persistence:** Supabase (PostgreSQL) — free tier, built-in auth, real-time, SQL audit trail
-- **Export:** @react-pdf/renderer (PDF), pptxgenjs (PPTX)
+- **Industry/CX benchmarks:** Claude itself via WebSearch + WebFetch (Agent SDK built-in). Can search for and cite Forrester, McKinsey, Baymard, etc.
+- **Frontend:** Next.js 16 (App Router), shadcn/ui, Zustand, React Hook Form + Zod
+- **Data persistence:** Supabase (PostgreSQL) — cases, methodologies, audit trail. Tables with RLS enabled.
+- **Export:** @react-pdf/renderer (PDF), pptxgenjs (PPTX) — planned
 
 ### MVP External Dependencies (Just 2)
 | Dependency | Purpose | Cost |

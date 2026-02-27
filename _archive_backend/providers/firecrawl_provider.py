@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any, Optional
@@ -42,7 +43,8 @@ class FirecrawlProvider(ProviderBase):
 
     async def health_check(self) -> bool:
         try:
-            result = self._app.scrape_url(
+            result = await asyncio.to_thread(
+                self._app.scrape_url,
                 "https://www.crunchbase.com",
                 params={"formats": ["markdown"]},
             )
@@ -57,7 +59,8 @@ class FirecrawlProvider(ProviderBase):
         url = self.CRUNCHBASE_URL.format(slug=slug)
 
         try:
-            result = self._app.scrape_url(
+            result = await asyncio.to_thread(
+                self._app.scrape_url,
                 url,
                 params={
                     "formats": ["extract"],
