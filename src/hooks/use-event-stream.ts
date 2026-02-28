@@ -135,6 +135,14 @@ export function usePipelineStream(caseId: string | null) {
           message: d.message,
         });
       }
+
+      // ---- data-result part (CalculationResult from run_calculation) ----
+      if (dataPart.type === "data-result") {
+        const d = dataPart.data as CalculationResult;
+        if (d && typeof d === "object" && "scenarios" in d) {
+          setResult(d);
+        }
+      }
     },
 
     onError: (error) => {
@@ -160,13 +168,11 @@ export function usePipelineStream(caseId: string | null) {
     sendMessage({ text: "start" });
   }, [caseId, sendMessage, setConnectionStatus]);
 
-  // Extract calculation results from assistant messages.
-  // The LLM's text output is intentionally NOT shown in the UI —
-  // results are rendered from the structured CalculationResult data.
+  // Store narrative text for Supabase persistence (not displayed in UI).
+  // The CalculationResult is captured via the data-result custom data part
+  // in onData above — no need to parse message parts.
   useEffect(() => {
     if (messages.length === 0) return;
-
-    // Store narrative text for Supabase persistence (not displayed in UI)
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.role === "assistant") {
       const textParts: string[] = [];
@@ -176,24 +182,7 @@ export function usePipelineStream(caseId: string | null) {
       const fullText = textParts.join("");
       if (fullText) useCaseStore.getState().setNarrative(fullText);
     }
-
-    // Extract CalculationResult from tool output parts
-    for (const msg of messages) {
-      if (msg.role !== "assistant") continue;
-      for (const part of msg.parts) {
-        if (
-          part.type === "dynamic-tool" &&
-          "state" in part &&
-          part.state === "output-available" &&
-          part.output &&
-          typeof part.output === "object" &&
-          "scenarios" in part.output
-        ) {
-          setResult(part.output as CalculationResult);
-        }
-      }
-    }
-  }, [messages, setResult]);
+  }, [messages]);
 
   // Map useChat status to connection status
   useEffect(() => {

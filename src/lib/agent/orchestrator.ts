@@ -312,7 +312,7 @@ export function createPipelineStream(params: {
               } as PipelineDataPart);
             }
 
-            // Capture calculation results
+            // Capture calculation results and emit to frontend
             if (toolName === "run_calculation" && event.success === true) {
               const output = event.output;
               if (
@@ -321,6 +321,14 @@ export function createPipelineStream(params: {
                 "scenarios" in output
               ) {
                 scenarios = output as Record<string, unknown>;
+
+                // Emit result as a custom data part so the frontend can
+                // render structured results immediately (no message parsing needed)
+                writer.write({
+                  type: "data-result",
+                  id: "calculation-result",
+                  data: output,
+                });
               }
             }
           },
