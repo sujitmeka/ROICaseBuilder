@@ -4,8 +4,7 @@ import { useParams } from "next/navigation";
 import { usePipelineStream } from "../../../hooks/use-event-stream";
 import { useStreamStore } from "../../../stores/stream-store";
 import { useCaseStore } from "../../../stores/case-store";
-import { PipelineTimeline } from "../../../components/streaming/PipelineTimeline";
-import { ActivityFeed } from "../../../components/streaming/ActivityFeed";
+import { StreamingChat } from "../../../components/streaming/StreamingChat";
 import { HeroMetricBar } from "../../../components/results/HeroMetricBar";
 import { ScenarioToggle } from "../../../components/results/ScenarioToggle";
 import { ResultsView } from "../../../components/results/ResultsView";
@@ -15,7 +14,6 @@ export default function CasePage() {
   const caseId = params.caseId as string;
 
   const connectionStatus = useStreamStore((s) => s.connectionStatus);
-  const pipelineSteps = useStreamStore((s) => s.pipelineSteps);
   const error = useStreamStore((s) => s.error);
   const results = useCaseStore((s) => s.calculationResult);
   const activeScenario = useCaseStore((s) => s.activeScenario);
@@ -23,7 +21,7 @@ export default function CasePage() {
   const serviceType = useCaseStore((s) => s.serviceType);
 
   // Connect to AI SDK streaming pipeline
-  const { isConnected } = usePipelineStream(caseId);
+  const { isConnected, messages } = usePipelineStream(caseId);
 
   // Results view — show when calculation data is available
   if (results) {
@@ -91,17 +89,8 @@ export default function CasePage() {
           )}
         </div>
 
-        {/* Pipeline progress stepper */}
-        {pipelineSteps.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm mb-6">
-            <PipelineTimeline steps={pipelineSteps} />
-          </div>
-        )}
-
-        {/* Activity feed */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <ActivityFeed />
-        </div>
+        {/* Collapsible tool call stream (Claude.ai-style) */}
+        <StreamingChat messages={messages} />
       </div>
     </main>
   );

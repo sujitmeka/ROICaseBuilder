@@ -196,5 +196,6 @@ export function usePipelineStream(caseId: string | null) {
     isConnected: status === "streaming",
     status,
     stop,
+    messages,
   };
 }

@@ -341,8 +341,9 @@ export function createPipelineStream(params: {
           data: { stepId: "narrative", status: "active" },
         } as PipelineDataPart);
 
-        // Merge the LLM stream into the UI stream (carries tool results to the client)
-        writer.merge(result.toUIMessageStream());
+        // Merge the LLM stream into the UI stream (carries tool results to the client).
+        // sendSources: true includes web search citations as source-url parts.
+        writer.merge(result.toUIMessageStream({ sendSources: true }));
 
         // Wait for the stream to complete
         const finalText = await result.text;
