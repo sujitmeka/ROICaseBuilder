@@ -9,8 +9,12 @@ import type { UIMessage } from "ai";
 
 const TOOL_LABELS: Record<string, string> = {
   load_methodology: "Loading methodology",
-  fetch_financials: "Fetching financial data",
-  scrape_company: "Scraping company data",
+  finance_search: "Searching financial data",
+  sec_search: "Searching SEC filings",
+  company_research: "Researching company",
+  scrape: "Scraping webpage",
+  extract: "Extracting data",
+  firecrawl_search: "Searching web (Firecrawl)",
   run_calculation: "Running ROI calculations",
   web_search: "Searching the web",
 };
@@ -22,11 +26,17 @@ function getToolLabel(
   if (toolName === "load_methodology" && input?.service_type) {
     return `Loading methodology for ${input.service_type}`;
   }
-  if (toolName === "fetch_financials" && input?.company_name) {
-    return `Fetching financial data for ${input.company_name}`;
+  if (toolName === "finance_search" && input?.query) {
+    return `Searching financials: ${(input.query as string).slice(0, 60)}`;
   }
-  if (toolName === "scrape_company" && input?.company_name) {
-    return `Scraping company data for ${input.company_name}`;
+  if (toolName === "sec_search" && input?.query) {
+    return `Searching SEC filings: ${(input.query as string).slice(0, 60)}`;
+  }
+  if (toolName === "company_research" && input?.query) {
+    return `Researching: ${(input.query as string).slice(0, 60)}`;
+  }
+  if (toolName === "scrape" && input?.url) {
+    return `Scraping ${(input.url as string).slice(0, 50)}`;
   }
   return TOOL_LABELS[toolName] ?? `Using ${toolName}`;
 }
@@ -58,29 +68,6 @@ function ToolOutputSummary({
               <li key={k.id}>{k.label}</li>
             ))}
           </ul>
-        )}
-      </div>
-    );
-  }
-
-  if (toolName === "fetch_financials" || toolName === "scrape_company") {
-    const fields = data.fields as Record<string, unknown> | undefined;
-    const gaps = data.gaps as string[] | undefined;
-    const fieldCount = fields ? Object.keys(fields).length : 0;
-    return (
-      <div className="text-sm text-gray-600 space-y-1">
-        {fieldCount > 0 ? (
-          <p>
-            <span className="font-medium text-gray-700">{fieldCount} data fields</span> retrieved
-          </p>
-        ) : (
-          <p className="text-amber-600">No data found — will use benchmarks</p>
-        )}
-        {gaps && gaps.length > 0 && (
-          <p className="text-xs text-gray-500">
-            Gaps: {gaps.slice(0, 5).join(", ")}
-            {gaps.length > 5 && ` +${gaps.length - 5} more`}
-          </p>
         )}
       </div>
     );
