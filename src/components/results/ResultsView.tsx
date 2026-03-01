@@ -188,9 +188,10 @@ interface Props {
   result: CalculationResult;
   scenario: Scenario;
   serviceType: string;
+  narrative: string;
 }
 
-export function ResultsView({ result, scenario, serviceType }: Props) {
+export function ResultsView({ result, scenario, serviceType, narrative }: Props) {
   const data: ScenarioData = result.scenarios[scenario];
 
   const activeKpis = data.kpi_results
@@ -327,6 +328,20 @@ export function ResultsView({ result, scenario, serviceType }: Props) {
                 )}
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Calculation Narrative */}
+      {narrative && (
+        <section className="space-y-2">
+          <h3 className="text-base font-semibold text-gray-900">
+            Analysis Notes
+          </h3>
+          <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
+              {narrative}
+            </div>
           </div>
         </section>
       )}

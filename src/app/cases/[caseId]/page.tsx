@@ -19,6 +19,7 @@ export default function CasePage() {
   const activeScenario = useCaseStore((s) => s.activeScenario);
   const companyName = useCaseStore((s) => s.companyName);
   const serviceType = useCaseStore((s) => s.serviceType);
+  const narrative = useCaseStore((s) => s.narrative);
 
   // Connect to AI SDK streaming pipeline
   const { isConnected, messages } = usePipelineStream(caseId);
@@ -60,6 +61,7 @@ export default function CasePage() {
             result={results}
             scenario={activeScenario}
             serviceType={serviceType || "Experience Transformation & Design"}
+            narrative={narrative}
           />
         </div>
       </main>
