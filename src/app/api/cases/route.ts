@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
     .insert({
       company_name: parsed.data.companyName,
       industry: parsed.data.industryVertical,
+      company_type: parsed.data.companyType,
+      estimated_project_cost: parsed.data.estimatedProjectCost,
       service_type: parsed.data.serviceType,
       methodology_id: "experience-transformation-design",
       status: "started",

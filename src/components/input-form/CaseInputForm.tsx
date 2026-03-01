@@ -25,6 +25,7 @@ export function CaseInputForm() {
     defaultValues: {
       companyName: "",
       industryVertical: undefined,
+      companyType: "public",
       serviceType: "experience-transformation-design",
     },
   });
@@ -32,6 +33,8 @@ export function CaseInputForm() {
   // Register all fields so react-hook-form tracks them
   register("companyName");
   register("industryVertical");
+  register("companyType");
+  register("estimatedProjectCost", { valueAsNumber: true });
   register("serviceType");
 
   async function onSubmit(data: CaseInput) {
@@ -68,6 +71,33 @@ export function CaseInputForm() {
         {errors.companyName && (
           <p className="mt-1 text-sm text-red-600">
             {errors.companyName.message}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-2">
+          Company Type
+        </label>
+        <div className="flex gap-2">
+          {(["public", "private"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setValue("companyType", type)}
+              className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                watch("companyType") === type
+                  ? "border-blue-600 bg-blue-50 text-blue-700"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {type === "public" ? "Public" : "Private"}
+            </button>
+          ))}
+        </div>
+        {errors.companyType && (
+          <p className="mt-1 text-sm text-red-600">
+            {errors.companyType.message}
           </p>
         )}
       </div>
@@ -110,6 +140,34 @@ export function CaseInputForm() {
         {errors.serviceType && (
           <p className="mt-1 text-sm text-red-600">
             {errors.serviceType.message}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label
+          htmlFor="estimatedProjectCost"
+          className="block text-sm font-medium mb-1"
+        >
+          Estimated Project Cost
+        </label>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+            $
+          </span>
+          <input
+            id="estimatedProjectCost"
+            type="number"
+            min="1"
+            step="1000"
+            placeholder="e.g. 500000"
+            {...register("estimatedProjectCost", { valueAsNumber: true })}
+            className="w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+        {errors.estimatedProjectCost && (
+          <p className="mt-1 text-sm text-red-600">
+            {errors.estimatedProjectCost.message}
           </p>
         )}
       </div>
