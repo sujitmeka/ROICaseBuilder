@@ -9,6 +9,8 @@
 
 import { streamText, stepCountIs, createUIMessageStream } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { financeSearch, secSearch, companyResearch } from "@valyu/ai-sdk";
+import { scrapeTool, extractTool, searchTool } from "firecrawl-aisdk";
 import { tools } from "./tools";
 
 // ---------------------------------------------------------------------------
@@ -42,8 +44,12 @@ export interface PipelineDataPart {
 
 const TOOL_STEP_MAP: Record<string, string> = {
   load_methodology: "classify",
-  fetch_financials: "financials",
-  scrape_company: "financials",
+  finance_search: "financials",
+  sec_search: "financials",
+  company_research: "financials",
+  scrape: "financials",
+  extract: "financials",
+  firecrawl_search: "financials",
   web_search: "benchmarks",
   run_calculation: "calculate",
 };
@@ -57,10 +63,18 @@ function summarizeToolCall(
   args: Record<string, unknown>,
 ): string {
   switch (toolName) {
-    case "fetch_financials":
-      return `Fetching financial data for ${(args.company_name as string) ?? "company"}`;
-    case "scrape_company":
-      return `Scraping company data for ${(args.company_name as string) ?? "company"}`;
+    case "finance_search":
+      return `Searching financial data: ${(args.query as string)?.slice(0, 60) ?? "financials"}`;
+    case "sec_search":
+      return `Searching SEC filings: ${(args.query as string)?.slice(0, 60) ?? "filings"}`;
+    case "company_research":
+      return `Researching company: ${(args.query as string)?.slice(0, 60) ?? "company"}`;
+    case "scrape":
+      return `Scraping ${(args.url as string)?.slice(0, 50) ?? "webpage"}`;
+    case "extract":
+      return `Extracting data from ${(args.url as string)?.slice(0, 50) ?? "webpage"}`;
+    case "firecrawl_search":
+      return `Searching web: ${(args.query as string)?.slice(0, 60) ?? "query"}`;
     case "run_calculation":
       return "Running ROI calculation engine";
     case "load_methodology":
@@ -76,9 +90,33 @@ function summarizeToolCall(
 // System Prompt
 // ---------------------------------------------------------------------------
 
-function getSystemPrompt(): string {
+function getSystemPrompt(companyType: "public" | "private"): string {
   const today = new Date().toISOString().split("T")[0];
   const year = new Date().getFullYear();
+
+  const dataStrategy = companyType === "public"
+    ? `## Data Strategy: PUBLIC Company
+
+Use Valyu's structured financial datasets as your primary data source:
+- **finance_search** — Query for specific metrics: revenue, net income, margins, growth rates.
+  Use specific queries like "Nike annual revenue ${year}" or "Nike gross margin".
+- **sec_search** — Query SEC filings (10-K, 10-Q, 8-K) for detailed financial data.
+  Use queries like "Nike 10-K annual report revenue".
+- **company_research** — Get a broad company overview with funding, valuation, market data.
+
+These tools return structured data from real financial sources. Be specific in your queries.`
+    : `## Data Strategy: PRIVATE Company
+
+This is a private company — SEC filings and public financial data are not available.
+Use Firecrawl and Valyu to gather what data exists:
+- **company_research** — Try this first for any available company intelligence.
+- **scrape** — Scrape specific pages (Crunchbase, PitchBook, company website) for data.
+  Use URLs like "https://www.crunchbase.com/organization/{company-slug}".
+- **extract** — Extract structured data from webpages with a natural language prompt.
+- **firecrawl_search** — Search the web for company information via Firecrawl.
+
+Data from private companies has lower confidence. Set confidence_tier to "estimated"
+and confidence_score to 0.5 or lower for scraped/estimated values.`;
 
   return `You are the CPROI Orchestrator Agent. Your role is to coordinate the end-to-end
 ROI calculation pipeline for client partner engagements.
@@ -89,13 +127,20 @@ Today's date is ${today}. Always search for the most recent data available (pref
 or ${year - 1} data). Do not search for or cite outdated data from earlier years unless
 no recent data exists.
 
+This is a **${companyType.toUpperCase()}** company.
+
 ## Your Tools
 
 - **load_methodology** — Call this FIRST. Returns the methodology config with KPI definitions,
   required input fields, benchmark ranges, and realization curve. This drives everything.
-- **fetch_financials** — Fetches company-specific financial data from SEC filings (Valyu) or
-  Crunchbase (Firecrawl). Returns populated fields and a list of gaps.
-- **scrape_company** — Fallback for private companies if fetch_financials returns no data.
+- **finance_search** — Search Valyu's structured financial datasets for stock prices, earnings,
+  financial statements, income statements, balance sheets, and cash flow data.
+- **sec_search** — Search SEC filings (10-K, 10-Q, 8-K), insider transactions, and regulatory
+  disclosures via Valyu.
+- **company_research** — Comprehensive company intelligence via Valyu.
+- **scrape** — Scrape a single URL and return its content as markdown (Firecrawl).
+- **extract** — Extract structured data from a URL using a natural language prompt (Firecrawl).
+- **firecrawl_search** — Search the web for information via Firecrawl.
 - **web_search** — Search the web for industry benchmark data to fill gaps.
   Use specific queries like "retail average conversion rate ${year} Baymard Institute".
 - **run_calculation** — Runs the ROI calculation engine against gathered data.
@@ -103,13 +148,15 @@ no recent data exists.
   Each field should be an object with value, confidence_tier, and confidence_score.
   Returns 3 scenarios with full audit trail.
 
+${dataStrategy}
+
 ## Process
 
 1. **Load methodology** — Call load_methodology to get the config for this service type.
    Read the KPI definitions to understand what input fields you need.
 
-2. **Gather financial data** — Call fetch_financials with the company name and industry.
-   Review what fields came back and what gaps remain.
+2. **Gather financial data** — Follow the data strategy above based on company type.
+   Your goal is to populate the fields required by the methodology's KPIs.
 
 3. **Fill gaps with benchmark research** — For each missing field that a KPI needs,
    use web_search to find real industry benchmark data. Search for specific, recent,
@@ -125,8 +172,15 @@ no recent data exists.
    - Do the numbers make sense? Flag anything suspicious.
    - Check that total impact is reasonable for the company's revenue.
 
-5. **Done** — The frontend renders structured results from the calculation data.
-   You do NOT need to format or present the results. Just confirm the analysis is complete.
+5. **Write calculation narrative** — After the calculation completes, write a brief
+   explanation (3-5 paragraphs) of your analysis for the Client Partner. Cover:
+   - What financial data you found and from where (cite specific sources)
+   - What benchmark assumptions you used and why they're reasonable
+   - How the key impact numbers were derived (walk through 1-2 of the biggest KPIs)
+   - Any caveats, data gaps, or confidence concerns the CP should know about
+   Write in clear business language. The CP will use this to understand and defend
+   the numbers in conversation with the client. Do not repeat raw numbers the UI
+   already shows — focus on reasoning, sources, and judgment calls.
 
 ## Key Principles
 
@@ -135,7 +189,7 @@ no recent data exists.
 - Prefer company-reported data over benchmarks. Use benchmarks only for gaps.
 - If a field can't be found anywhere, skip the KPI gracefully — don't fabricate data.
 - Think step by step. After each tool call, reason about what you learned and what to do next.
-- Keep your reasoning concise — the user does not see your text output.
+- Your text output is shown to the CP as the calculation narrative. Write clearly and concisely.
 `;
 }
 
@@ -156,13 +210,15 @@ export interface OrchestratorResult {
 export function createPipelineStream(params: {
   companyName: string;
   industry: string;
+  companyType: "public" | "private";
+  estimatedProjectCost: number;
   serviceType: string;
   caseId: string;
 }): {
   stream: ReadableStream;
   resultPromise: Promise<OrchestratorResult>;
 } {
-  const { companyName, industry, serviceType, caseId } = params;
+  const { companyName, industry, companyType, estimatedProjectCost, serviceType, caseId } = params;
 
   // Deferred promise — resolved when stream completes, rejected on error.
   // Using manual pattern for Node 20 compatibility (Promise.withResolvers requires Node 22+).
@@ -173,9 +229,19 @@ export function createPipelineStream(params: {
     rejectResult = reject;
   });
 
+  const formattedCost = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(estimatedProjectCost);
+
   const userTask =
     `Analyze the ROI case for ${companyName} in the ${industry} industry ` +
     `using the ${serviceType} methodology.\n\n` +
+    `The estimated project cost (engagement cost) is ${formattedCost}. ` +
+    `When calling run_calculation, include this as an "engagement_cost" field ` +
+    `in the company_data.fields object with value ${estimatedProjectCost}, ` +
+    `confidence_tier "company_reported", and confidence_score 1.0.\n\n` +
     `Follow your process: load the methodology first, then gather financial ` +
     `data, fill gaps with web search benchmarks, and run the calculation.`;
 
@@ -211,16 +277,30 @@ export function createPipelineStream(params: {
 
         const result = streamText({
           model: anthropic("claude-sonnet-4-5-20250929"),
-          system: getSystemPrompt(),
+          system: getSystemPrompt(companyType),
           messages: [{ role: "user", content: userTask }],
           tools: {
             ...tools,
+            // Valyu tools — structured financial datasets (public companies only)
+            ...(companyType === "public" && {
+              finance_search: financeSearch({ maxNumResults: 5 }),
+              sec_search: secSearch({ maxNumResults: 5 }),
+            }),
+            // Firecrawl tools — web scraping (private companies only)
+            ...(companyType === "private" && {
+              scrape: scrapeTool,
+              extract: extractTool,
+              firecrawl_search: searchTool,
+            }),
+            // Available for both — general company intel + web search + benchmarks
+            company_research: companyResearch(),
             web_search: anthropic.tools.webSearch_20250305({ maxUses: 10 }),
           },
           stopWhen: stepCountIs(20),
           maxOutputTokens: 8192,
 
           experimental_onToolCallStart({ toolCall }) {
+            if (!toolCall) return;
             const toolName = toolCall.toolName;
             const args = (toolCall.input ?? {}) as Record<string, unknown>;
             const stepId = TOOL_STEP_MAP[toolName];
@@ -248,6 +328,7 @@ export function createPipelineStream(params: {
 
           onStepFinish({ toolCalls }) {
             for (const tc of toolCalls) {
+              if (!tc) continue;
               if (tc.toolName === "web_search") {
                 if (!benchmarksStarted) {
                   benchmarksStarted = true;
@@ -290,6 +371,7 @@ export function createPipelineStream(params: {
           },
 
           experimental_onToolCallFinish(event) {
+            if (!event.toolCall) return;
             const toolName = event.toolCall.toolName;
             const stepId = TOOL_STEP_MAP[toolName];
 
