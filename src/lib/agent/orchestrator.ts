@@ -408,7 +408,7 @@ export function createPipelineStream(params: {
           messages: [{ role: "user", content: userTask }],
           providerOptions: {
             anthropic: {
-              thinking: { type: "enabled", budgetTokens: 10000 },
+              thinking: { type: "adaptive" },
             } satisfies AnthropicLanguageModelOptions,
           },
           tools: {
