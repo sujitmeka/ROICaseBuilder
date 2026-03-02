@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { caseInputSchema } from "../../../lib/schemas";
+import { checkAuth } from "../_auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,6 +9,9 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
+  const authError = checkAuth(request);
+  if (authError) return authError;
+
   const body = await request.json();
   const parsed = caseInputSchema.safeParse(body);
 

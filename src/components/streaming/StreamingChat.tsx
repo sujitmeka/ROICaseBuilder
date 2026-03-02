@@ -368,7 +368,7 @@ function getToolInfo(part: AnyPart): {
   return null;
 }
 
-export function StreamingChat({ messages }: { messages: UIMessage[] }) {
+function StreamingChatInner({ messages }: { messages: UIMessage[] }) {
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
   if (assistantMsgs.length === 0) return null;
 
@@ -421,3 +421,5 @@ export function StreamingChat({ messages }: { messages: UIMessage[] }) {
     </div>
   );
 }
+
+export const StreamingChat = memo(StreamingChatInner);

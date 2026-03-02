@@ -1,3 +1,13 @@
+const SKELETON_ROW = (
+  <div className="animate-pulse flex items-center gap-3">
+    <div className="h-5 w-5 bg-gray-200 rounded-full flex-shrink-0" />
+    <div className="h-4 bg-gray-200 rounded flex-1" />
+    <div className="h-4 w-4 bg-gray-200 rounded flex-shrink-0" />
+  </div>
+);
+
+const SKELETON_INDICES = [0, 1, 2, 3];
+
 export default function CaseLoading() {
   return (
     <main className="min-h-screen bg-gray-50">
@@ -8,16 +18,12 @@ export default function CaseLoading() {
         </div>
 
         <div className="space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => (
+          {SKELETON_INDICES.map((i) => (
             <div
               key={i}
               className="rounded-lg border border-gray-200 bg-white px-4 py-3"
             >
-              <div className="animate-pulse flex items-center gap-3">
-                <div className="h-5 w-5 bg-gray-200 rounded-full flex-shrink-0" />
-                <div className="h-4 bg-gray-200 rounded flex-1" />
-                <div className="h-4 w-4 bg-gray-200 rounded flex-shrink-0" />
-              </div>
+              {SKELETON_ROW}
             </div>
           ))}
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { formatCurrency } from "../../lib/utils";
 import { useCaseStore } from "../../stores/case-store";
 import type {
@@ -186,7 +187,7 @@ function NarrativeSection() {
   );
 }
 
-export function ResultsView({ result, scenario, serviceType }: Props) {
+function ResultsViewInner({ result, scenario, serviceType }: Props) {
   const data: ScenarioData = result.scenarios[scenario];
 
   // Single pass: partition into active vs skipped and collect unique categories
@@ -322,3 +323,5 @@ export function ResultsView({ result, scenario, serviceType }: Props) {
     </div>
   );
 }
+
+export const ResultsView = memo(ResultsViewInner);

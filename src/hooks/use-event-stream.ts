@@ -160,6 +160,7 @@ export function usePipelineStream(caseId: string | null) {
   });
 
   const { messages, sendMessage, status, stop } = chatHelpers;
+  const prevStatus = useRef(status);
 
   // Auto-send initial message to trigger the pipeline
   useEffect(() => {
@@ -176,29 +177,31 @@ export function usePipelineStream(caseId: string | null) {
     sendMessage({ text: "start" });
   }, [caseId, sendMessage, setConnectionStatus]);
 
-  // Store narrative text for Supabase persistence (not displayed in UI).
-  // The CalculationResult is captured via the data-result custom data part
-  // in onData above — no need to parse message parts.
+  // Combined status tracking + narrative extraction.
+  // Maps useChat status to Zustand connection status, and extracts narrative
+  // text only once when streaming completes (status transitions to "ready")
+  // instead of on every messages array reference change.
   useEffect(() => {
-    if (messages.length === 0) return;
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role === "assistant") {
-      const textParts: string[] = [];
-      for (const part of lastMsg.parts) {
-        if (part.type === "text") textParts.push(part.text);
-      }
-      const fullText = textParts.join("");
-      if (fullText) useCaseStore.getState().setNarrative(fullText);
-    }
-  }, [messages]);
-
-  // Map useChat status to connection status
-  useEffect(() => {
+    // Map useChat status to connection status
     if (status === "submitted") setConnectionStatus("connecting");
     else if (status === "streaming") setConnectionStatus("connected");
     else if (status === "ready") setConnectionStatus("disconnected");
     else if (status === "error") setConnectionStatus("disconnected");
-  }, [status, setConnectionStatus]);
+
+    // Extract narrative when streaming completes
+    if (prevStatus.current === "streaming" && status === "ready" && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.role === "assistant") {
+        const textParts: string[] = [];
+        for (const part of lastMsg.parts) {
+          if (part.type === "text") textParts.push(part.text);
+        }
+        const fullText = textParts.join("");
+        if (fullText) useCaseStore.getState().setNarrative(fullText);
+      }
+    }
+    prevStatus.current = status;
+  }, [status, setConnectionStatus, messages]);
 
   return {
     isConnected: status === "streaming",

@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
+import { useShallow } from "zustand/react/shallow";
 import { usePipelineStream } from "../../../hooks/use-event-stream";
 import { useStreamStore } from "../../../stores/stream-store";
 import { useCaseStore } from "../../../stores/case-store";
@@ -21,12 +22,20 @@ export default function CasePage() {
   const params = useParams();
   const caseId = params.caseId as string;
 
-  const connectionStatus = useStreamStore((s) => s.connectionStatus);
-  const error = useStreamStore((s) => s.error);
-  const results = useCaseStore((s) => s.calculationResult);
-  const activeScenario = useCaseStore((s) => s.activeScenario);
-  const companyName = useCaseStore((s) => s.companyName);
-  const serviceType = useCaseStore((s) => s.serviceType);
+  const { connectionStatus, error } = useStreamStore(
+    useShallow((s) => ({
+      connectionStatus: s.connectionStatus,
+      error: s.error,
+    }))
+  );
+  const { results, activeScenario, companyName, serviceType } = useCaseStore(
+    useShallow((s) => ({
+      results: s.calculationResult,
+      activeScenario: s.activeScenario,
+      companyName: s.companyName,
+      serviceType: s.serviceType,
+    }))
+  );
   // Connect to AI SDK streaming pipeline
   const { isConnected, messages } = usePipelineStream(caseId);
 
@@ -43,12 +52,12 @@ export default function CasePage() {
               </h1>
               <div className="flex items-center gap-3">
                 <ScenarioToggle />
-                {isConnected && (
+                {isConnected ? (
                   <span className="flex items-center gap-1.5 text-xs text-blue-600">
                     <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
                     Updating
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
             <HeroMetricBar
@@ -88,12 +97,12 @@ export default function CasePage() {
               ? "Analysis in progress"
               : "Waiting for connection..."}
           </p>
-          {error && (
+          {error ? (
             <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 text-left">
               <p className="text-red-800 text-sm font-medium">Analysis Error</p>
               <p className="text-red-600 text-sm mt-1">{error}</p>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Collapsible tool call stream (Claude.ai-style) */}

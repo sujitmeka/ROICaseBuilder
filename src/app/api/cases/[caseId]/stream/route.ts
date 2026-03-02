@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createPipelineStream } from "../../../../../lib/agent/orchestrator";
+import { checkAuth } from "../../../_auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ caseId: string }> }
 ) {
+  const authError = checkAuth(request);
+  if (authError) return authError;
+
   const { caseId } = await params;
 
   // Look up the case to get inputs

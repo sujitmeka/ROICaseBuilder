@@ -39,8 +39,8 @@ export function CaseInputForm() {
   register("serviceType");
 
   async function onSubmit(data: CaseInput) {
-    setIsSubmitting(true);
-    setSubmitError(null);
+    setIsSubmitting(() => true);
+    setSubmitError(() => null);
     try {
       const res = await fetch("/api/cases", {
         method: "POST",
@@ -56,8 +56,8 @@ export function CaseInputForm() {
         router.push(`/cases/${caseId}`);
       });
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Something went wrong");
-      setIsSubmitting(false);
+      setSubmitError(() => err instanceof Error ? err.message : "Something went wrong");
+      setIsSubmitting(() => false);
     }
   }
 

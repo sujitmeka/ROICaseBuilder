@@ -8,10 +8,16 @@ import type { CompanyData, ImpactAssumptions, MethodologyConfig } from "./types"
 // Helpers
 // ---------------------------------------------------------------------------
 
-let cachedMethodology: { key: string; value: MethodologyConfig } | null = null;
+let cachedMethodology: { key: string; value: MethodologyConfig; cachedAt: number } | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function loadActiveMethodology(serviceType: string): Promise<MethodologyConfig | null> {
-  if (cachedMethodology?.key === serviceType) return cachedMethodology.value;
+  if (
+    cachedMethodology?.key === serviceType &&
+    Date.now() - cachedMethodology.cachedAt < CACHE_TTL_MS
+  ) {
+    return cachedMethodology.value;
+  }
 
   const { data, error } = await supabase
     .from("methodologies")
@@ -24,7 +30,7 @@ export async function loadActiveMethodology(serviceType: string): Promise<Method
 
   if (error || !data) return null;
   if (!Array.isArray(data.kpis)) return null;
-  cachedMethodology = { key: serviceType, value: data as MethodologyConfig };
+  cachedMethodology = { key: serviceType, value: data as MethodologyConfig, cachedAt: Date.now() };
   return cachedMethodology.value;
 }
 
