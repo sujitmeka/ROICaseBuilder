@@ -1,5 +1,5 @@
 import type {
-  CalculationResult, CompanyData, ConfidenceDiscounts, DataSourceTier,
+  CalculationResult, CompanyData, ImpactAssumptions,
   KPIAuditEntry, KPIConfig, MethodologyConfig, Scenario,
   ScenarioResult, YearProjection,
 } from "./types";
@@ -7,11 +7,11 @@ import { KPI_REGISTRY } from "./kpi-formulas";
 
 const SCENARIOS: Scenario[] = ["conservative", "moderate", "aggressive"];
 
-function getDiscount(discounts: ConfidenceDiscounts, tier: DataSourceTier): number {
-  return discounts[tier];
-}
-
-export function calculate(companyData: CompanyData, methodology: MethodologyConfig): CalculationResult {
+export function calculate(
+  companyData: CompanyData,
+  methodology: MethodologyConfig,
+  impactAssumptions: ImpactAssumptions,
+): CalculationResult {
   const enabledKpis = methodology.kpis.filter((k) => k.enabled);
   const requiredInputs = new Set(enabledKpis.flatMap((k) => k.inputs));
   const availableInputs = new Set(Object.keys(companyData.fields));
@@ -27,7 +27,7 @@ export function calculate(companyData: CompanyData, methodology: MethodologyConf
 
   const scenarios = {} as Record<Scenario, ScenarioResult>;
   for (const scenario of SCENARIOS) {
-    scenarios[scenario] = runScenario(companyData, methodology, enabledKpis, scenario);
+    scenarios[scenario] = runScenario(companyData, methodology, enabledKpis, scenario, impactAssumptions);
   }
 
   return {
@@ -46,27 +46,27 @@ export function calculate(companyData: CompanyData, methodology: MethodologyConf
 function runScenario(
   companyData: CompanyData, config: MethodologyConfig,
   enabledKpis: KPIConfig[], scenario: Scenario,
+  impactAssumptions: ImpactAssumptions,
 ): ScenarioResult {
   const kpiResults: KPIAuditEntry[] = [];
   const skippedKpis: string[] = [];
 
   for (const kpiConfig of enabledKpis) {
-    const entry = calculateSingleKpi(companyData, kpiConfig, config, scenario);
+    const entry = calculateSingleKpi(companyData, kpiConfig, impactAssumptions, scenario);
     kpiResults.push(entry);
     if (entry.skipped) skippedKpis.push(entry.kpi_id);
   }
 
-  const totalUnweighted = kpiResults.filter((e) => !e.skipped).reduce((s, e) => s + e.adjusted_impact, 0);
-  const totalWeighted = kpiResults.filter((e) => !e.skipped).reduce((s, e) => s + e.weighted_impact, 0);
+  const totalImpact = kpiResults.filter((e) => !e.skipped).reduce((s, e) => s + e.raw_impact, 0);
 
   const impactByCategory: Record<string, number> = {};
   for (const entry of kpiResults) {
     if (!entry.skipped) {
-      impactByCategory[entry.category] = (impactByCategory[entry.category] ?? 0) + entry.adjusted_impact;
+      impactByCategory[entry.category] = (impactByCategory[entry.category] ?? 0) + entry.raw_impact;
     }
   }
 
-  const yearProjections = projectMultiYear(totalUnweighted, config.realization_curve);
+  const yearProjections = projectMultiYear(totalImpact, config.realization_curve);
   const cumulative = yearProjections.reduce((s, p) => s + p.projected_impact, 0);
 
   const engCost = companyData.fields.engagement_cost;
@@ -76,15 +76,14 @@ function runScenario(
 
   if (engCost && engCost.value > 0) {
     engCostVal = engCost.value;
-    roiPct = ((totalUnweighted - engCostVal) / engCostVal) * 100;
-    roiMult = totalUnweighted / engCostVal;
+    roiPct = ((totalImpact - engCostVal) / engCostVal) * 100;
+    roiMult = totalImpact / engCostVal;
   }
 
   return {
     scenario,
     kpi_results: kpiResults,
-    total_annual_impact: totalWeighted,
-    total_annual_impact_unweighted: totalUnweighted,
+    total_annual_impact: totalImpact,
     impact_by_category: impactByCategory,
     year_projections: yearProjections,
     cumulative_3yr_impact: cumulative,
@@ -97,26 +96,26 @@ function runScenario(
 
 function calculateSingleKpi(
   companyData: CompanyData, kpiConfig: KPIConfig,
-  config: MethodologyConfig, scenario: Scenario,
+  impactAssumptions: ImpactAssumptions, scenario: Scenario,
 ): KPIAuditEntry {
   const kpiDef = KPI_REGISTRY[kpiConfig.id];
   if (!kpiDef) return skippedEntry(kpiConfig, `KPI '${kpiConfig.id}' not found in registry`);
 
+  const impactValue = impactAssumptions[kpiConfig.id]?.[scenario];
+  if (impactValue === undefined) return skippedEntry(kpiConfig, "No impact assumption provided");
+
   const inputsUsed: Record<string, number> = {};
-  const inputTiers: DataSourceTier[] = [];
   const missingFields: string[] = [];
 
   for (const fieldName of kpiDef.requiredInputs) {
     const dp = companyData.fields[fieldName];
     if (!dp) { missingFields.push(fieldName); continue; }
     inputsUsed[fieldName] = dp.value;
-    inputTiers.push(dp.confidence_tier);
   }
 
   if (missingFields.length > 0) return skippedEntry(kpiConfig, `Missing required inputs: ${missingFields.join(", ")}`);
 
-  const benchmarkValue = kpiConfig.benchmark_ranges[scenario];
-  const formulaInputs = { ...inputsUsed, [kpiDef.benchmarkInput]: benchmarkValue };
+  const formulaInputs = { ...inputsUsed, [kpiDef.benchmarkInput]: impactValue };
 
   let rawImpact: number;
   try {
@@ -125,25 +124,13 @@ function calculateSingleKpi(
     return skippedEntry(kpiConfig, `Formula error: ${e}`);
   }
 
-  const confidenceMultiplier = inputTiers.length > 0
-    ? Math.min(...inputTiers.map((t) => getDiscount(config.confidence_discounts, t)))
-    : config.confidence_discounts.estimated;
-
-  const adjustedImpact = rawImpact * confidenceMultiplier;
-  const weightedImpact = adjustedImpact * kpiConfig.weight;
-
   return {
     kpi_id: kpiConfig.id,
     kpi_label: kpiConfig.label || kpiDef.label,
     formula_description: kpiConfig.formula,
     inputs_used: inputsUsed,
-    benchmark_value: benchmarkValue,
-    benchmark_source: kpiConfig.benchmark_source,
+    impact_assumption: impactValue,
     raw_impact: rawImpact,
-    confidence_discount: confidenceMultiplier,
-    adjusted_impact: adjustedImpact,
-    weight: kpiConfig.weight,
-    weighted_impact: weightedImpact,
     category: kpiDef.category,
     skipped: false,
   };
@@ -164,13 +151,8 @@ function skippedEntry(kpiConfig: KPIConfig, reason: string): KPIAuditEntry {
     kpi_label: kpiConfig.label || kpiConfig.id,
     formula_description: kpiConfig.formula,
     inputs_used: {},
-    benchmark_value: 0,
-    benchmark_source: kpiConfig.benchmark_source,
+    impact_assumption: 0,
     raw_impact: 0,
-    confidence_discount: 0,
-    adjusted_impact: 0,
-    weight: kpiConfig.weight,
-    weighted_impact: 0,
     category: "unknown",
     skipped: true,
     skip_reason: reason,
