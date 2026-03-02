@@ -9,8 +9,7 @@ import type { UIMessage } from "ai";
 
 const TOOL_LABELS: Record<string, string> = {
   load_methodology: "Loading methodology",
-  finance_search: "Searching financial data",
-  sec_search: "Searching SEC filings",
+  financial_data: "Searching financial data",
   company_research: "Researching company",
   scrape: "Scraping webpage",
   extract: "Extracting data",
@@ -26,11 +25,8 @@ function getToolLabel(
   if (toolName === "load_methodology" && input?.service_type) {
     return `Loading methodology for ${input.service_type}`;
   }
-  if (toolName === "finance_search" && input?.query) {
+  if (toolName === "financial_data" && input?.query) {
     return `Searching financials: ${(input.query as string).slice(0, 60)}`;
-  }
-  if (toolName === "sec_search" && input?.query) {
-    return `Searching SEC filings: ${(input.query as string).slice(0, 60)}`;
   }
   if (toolName === "company_research" && input?.query) {
     return `Researching: ${(input.query as string).slice(0, 60)}`;
@@ -95,7 +91,7 @@ function ToolOutputSummary({
     }
   }
 
-  if (toolName === "finance_search" || toolName === "sec_search") {
+  if (toolName === "financial_data") {
     // Valyu returns structured financial data
     const results = (data.results ?? data.data) as
       | Array<Record<string, unknown>>

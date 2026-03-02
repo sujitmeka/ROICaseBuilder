@@ -9,7 +9,8 @@
 
 import { streamText, stepCountIs, createUIMessageStream } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { financeSearch, secSearch, companyResearch } from "@valyu/ai-sdk";
+import { companyResearch } from "@valyu/ai-sdk";
+import { financialData } from "./valyu-tools";
 import { scrapeTool, extractTool, searchTool } from "firecrawl-aisdk";
 import { tools } from "./tools";
 
@@ -44,8 +45,7 @@ export interface PipelineDataPart {
 
 const TOOL_STEP_MAP: Record<string, string> = {
   load_methodology: "classify",
-  finance_search: "financials",
-  sec_search: "financials",
+  financial_data: "financials",
   company_research: "financials",
   scrape: "financials",
   extract: "financials",
@@ -63,10 +63,8 @@ function summarizeToolCall(
   args: Record<string, unknown>,
 ): string {
   switch (toolName) {
-    case "finance_search":
+    case "financial_data":
       return `Searching financial data: ${(args.query as string)?.slice(0, 60) ?? "financials"}`;
-    case "sec_search":
-      return `Searching SEC filings: ${(args.query as string)?.slice(0, 60) ?? "filings"}`;
     case "company_research":
       return `Researching company: ${(args.query as string)?.slice(0, 60) ?? "company"}`;
     case "scrape":
@@ -97,15 +95,24 @@ function getSystemPrompt(companyType: "public" | "private"): string {
   const dataStrategy = companyType === "public"
     ? `## Data Strategy: PUBLIC Company
 
-Use Valyu's structured financial datasets as your primary data source:
-- **finance_search** — Query for specific metrics: revenue, net income, margins, growth rates.
-  Use specific queries like "[Company] 10-K annual report revenue ${year}" or "[Company] gross margin fiscal year ${year}".
-- **sec_search** — Query SEC filings (10-K, 10-Q, 8-K) for detailed financial data.
-  Use queries like "[Company] 10-K annual report revenue ${year}".
-- **company_research** — Get a broad company overview with funding, valuation, market data.
+Use the financial_data tool as your PRIMARY data source. It searches 6 Valyu datasets:
+SEC filings, earnings, balance sheets, income statements, cash flow, and statistics.
+Date range defaults to the last 6 months → today. You can override dates if needed.
 
-Query for the most recent 10-K filing first. If that returns older data, try quarterly (10-Q) filings.
-These tools return structured data from real financial sources. Be specific in your queries.`
+**Querying strategy:**
+1. Start with the most recent 10-K filing: "[Company] 10-K annual revenue and net income"
+2. Query specific metrics separately: "[Company] balance sheet total assets current liabilities"
+3. If a 10-K returns older data, try: "[Company] 10-Q most recent quarter revenue"
+4. For growth metrics: "[Company] revenue growth rate year over year"
+
+**Be specific.** Each query costs money. Ask for exactly the metrics you need in one query
+rather than making broad searches. Include the company name and metric in every query.
+
+- **financial_data** — SEC filings, earnings, balance sheets, income statements, cash flow, statistics.
+  Automatically filtered to last 6 months. Override start_date for older filings.
+- **company_research** — Broad company intelligence overview (use sparingly, it's expensive).
+
+Do NOT search for crypto, forex, economic indicators, or market movers — these are irrelevant.`
     : `## Data Strategy: PRIVATE Company
 
 This is a private company — SEC filings and public financial data are not available.
@@ -133,9 +140,8 @@ Prefer ${year} or ${year - 1} data. Do not cite older data unless nothing recent
 | Tool | Purpose |
 |------|---------|
 | load_methodology | **Call first.** Returns KPI definitions, typical ranges, reasoning guidance, realization curve. |
-| finance_search | Valyu: financial statements, earnings, stock data. |
-| sec_search | Valyu: SEC filings (10-K, 10-Q, 8-K). |
-| company_research | Valyu: broad company intelligence. |
+| financial_data | Valyu: SEC filings, earnings, balance sheets, income statements, cash flow, statistics. Date-filtered (last 6 months). |
+| company_research | Valyu: broad company intelligence (expensive — use sparingly). |
 | scrape | Firecrawl: scrape a URL to markdown. |
 | extract | Firecrawl: extract structured data from a URL. |
 | firecrawl_search | Firecrawl: web search. |
@@ -379,10 +385,9 @@ export function createPipelineStream(params: {
           messages: [{ role: "user", content: userTask }],
           tools: {
             ...tools,
-            // Valyu tools — structured financial datasets (public companies only)
+            // Valyu financial data — restricted to 6 datasets with date guardrails (public companies only)
             ...(companyType === "public" && {
-              finance_search: financeSearch({ maxNumResults: 5 }),
-              sec_search: secSearch({ maxNumResults: 5 }),
+              financial_data: financialData({ maxNumResults: 5 }),
             }),
             // Firecrawl tools — web scraping (private companies only)
             ...(companyType === "private" && {
