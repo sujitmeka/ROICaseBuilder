@@ -4,40 +4,30 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-interface BenchmarkRanges {
-  conservative: number;
-  moderate: number;
-  aggressive: number;
-}
-
 interface KPI {
   id: string;
   label: string;
-  weight: number;
   formula: string;
   inputs: string[];
-  benchmark_ranges: BenchmarkRanges;
-  benchmark_source: string;
   enabled: boolean;
+  typical_range: { low: number; high: number };
+  reasoning_guidance: string;
+  reference_sources: string[];
 }
 
 interface Methodology {
   id: string;
   name: string;
   version: string;
+  description: string;
   service_type: string;
   applicable_industries: string[];
   kpis: KPI[];
   realization_curve: number[];
-  confidence_discounts: Record<string, number>;
 }
 
 function formatPercent(v: number) {
   return v < 1 ? `${(v * 100).toFixed(0)}%` : v.toString();
-}
-
-function formatWeight(v: number) {
-  return `${(v * 100).toFixed(0)}%`;
 }
 
 function IndustryBadge({ industry }: { industry: string }) {
@@ -51,30 +41,24 @@ function IndustryBadge({ industry }: { industry: string }) {
 function KPICard({ kpi }: { kpi: KPI }) {
   return (
     <div className="border border-gray-200 rounded-lg p-5 bg-white">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="font-semibold text-gray-900">{kpi.label}</h3>
-          <p className="mt-1 text-sm text-gray-500 font-mono">{kpi.formula}</p>
-        </div>
-        <span className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-md text-sm font-semibold bg-gray-100 text-gray-700">
-          {formatWeight(kpi.weight)} weight
-        </span>
+      <div>
+        <h3 className="font-semibold text-gray-900">{kpi.label}</h3>
+        <p className="mt-1 text-sm text-gray-500 font-mono">{kpi.formula}</p>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <div className="rounded-md bg-green-50 border border-green-100 p-3 text-center">
-          <div className="text-xs text-green-600 font-medium uppercase tracking-wide">Conservative</div>
-          <div className="mt-1 text-lg font-semibold text-green-700">{formatPercent(kpi.benchmark_ranges.conservative)}</div>
-        </div>
-        <div className="rounded-md bg-blue-50 border border-blue-100 p-3 text-center">
-          <div className="text-xs text-blue-600 font-medium uppercase tracking-wide">Moderate</div>
-          <div className="mt-1 text-lg font-semibold text-blue-700">{formatPercent(kpi.benchmark_ranges.moderate)}</div>
-        </div>
-        <div className="rounded-md bg-amber-50 border border-amber-100 p-3 text-center">
-          <div className="text-xs text-amber-600 font-medium uppercase tracking-wide">Aggressive</div>
-          <div className="mt-1 text-lg font-semibold text-amber-700">{formatPercent(kpi.benchmark_ranges.aggressive)}</div>
+      <div className="mt-4 rounded-md bg-gray-50 border border-gray-100 p-3">
+        <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Typical Range</div>
+        <div className="mt-1 text-lg font-semibold text-gray-700">
+          {formatPercent(kpi.typical_range.low)} – {formatPercent(kpi.typical_range.high)}
         </div>
       </div>
+
+      {kpi.reasoning_guidance && (
+        <div className="mt-3">
+          <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Reasoning Guidance</div>
+          <p className="mt-1 text-sm text-gray-600">{kpi.reasoning_guidance}</p>
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="text-xs text-gray-400">Inputs:</span>
@@ -85,9 +69,16 @@ function KPICard({ kpi }: { kpi: KPI }) {
         ))}
       </div>
 
-      <p className="mt-3 text-xs text-gray-400">
-        Source: {kpi.benchmark_source}
-      </p>
+      {kpi.reference_sources.length > 0 && (
+        <div className="mt-3">
+          <span className="text-xs text-gray-400">Sources:</span>
+          <ul className="mt-1 list-disc list-inside text-xs text-gray-500">
+            {kpi.reference_sources.map((src, i) => (
+              <li key={i}>{src}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -120,8 +111,8 @@ export default function MethodologiesPage() {
         Methodologies
       </h1>
       <p className="mt-2 text-gray-500">
-        How we calculate ROI. Every number in your case traces back to these
-        formulas and benchmarks.
+        How we evaluate ROI. Each methodology defines what metrics to assess and
+        provides guidance for company-specific impact analysis.
       </p>
 
       {loading && (
@@ -143,6 +134,9 @@ export default function MethodologiesPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   v{m.version} &middot; {m.service_type.replace(/-/g, " ")}
                 </p>
+                {m.description && (
+                  <p className="mt-2 text-sm text-gray-600">{m.description}</p>
+                )}
               </div>
             </div>
 
@@ -171,24 +165,6 @@ export default function MethodologiesPage() {
                       />
                     </div>
                     <span className="text-sm font-medium text-gray-700">{(pct * 100).toFixed(0)}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Confidence Discounts */}
-            <div className="mt-6 border-t border-gray-100 pt-5">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                Confidence Discounts
-              </h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Multiplier applied based on data quality tier
-              </p>
-              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {Object.entries(m.confidence_discounts).map(([tier, mult]) => (
-                  <div key={tier} className="rounded-md bg-gray-50 border border-gray-100 p-3 text-center">
-                    <div className="text-xs text-gray-500 font-medium">{tier.replace(/_/g, " ")}</div>
-                    <div className="mt-1 text-lg font-semibold text-gray-800">{mult}x</div>
                   </div>
                 ))}
               </div>
