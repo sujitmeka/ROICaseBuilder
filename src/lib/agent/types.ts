@@ -1,6 +1,7 @@
 // === Enums as union types ===
 export type Scenario = "conservative" | "moderate" | "aggressive";
 export type DataSourceTier = "company_reported" | "industry_benchmark" | "cross_industry" | "estimated";
+export type DriverCategory = "offensive" | "defensive" | "efficiency";
 
 // === Impact assumption types ===
 export interface TypicalRange {
@@ -52,6 +53,43 @@ export interface CompanyData {
   fields: Record<string, DataPointInput>;
 }
 
+// === Implementation Cost ===
+export interface ImplementationCostEstimate {
+  consulting_fee: number;
+  implementation_cost: number;
+  total_investment: number;
+  multiplier_used: number;
+  estimation_method: "user_provided" | "auto_estimated";
+}
+
+// === Overlap Adjustment ===
+export interface OverlapAdjustment {
+  gross_offensive: number;
+  gross_defensive: number;
+  gross_efficiency: number;
+  offensive_driver_count: number;
+  offensive_discount: number;
+  adjusted_offensive: number;
+  defensive_revenue_adjustment: number;
+  adjusted_defensive: number;
+  adjusted_efficiency: number;
+  gross_total: number;
+  adjusted_total: number;
+  overlap_discount_pct: number;
+}
+
+// === Realism Caps ===
+export interface RealismCapResult {
+  pre_cap_impact: number;
+  per_driver_caps_applied: string[];
+  total_cap_applied: boolean;
+  roi_cap_applied: boolean;
+  post_cap_impact: number;
+  post_cap_roi_multiple: number | undefined;
+  cap_footnotes: string[];
+  weak_case_flag: boolean;
+}
+
 // === Calculation Results ===
 export interface KPIAuditEntry {
   kpi_id: string;
@@ -63,6 +101,8 @@ export interface KPIAuditEntry {
   category: string;
   skipped: boolean;
   skip_reason?: string;
+  driver_category?: DriverCategory;
+  capped_impact?: number;
 }
 
 export interface YearProjection {
@@ -83,6 +123,11 @@ export interface ScenarioResult {
   roi_multiple?: number;
   engagement_cost?: number;
   skipped_kpis: string[];
+  investment_breakdown?: ImplementationCostEstimate;
+  overlap_adjustment?: OverlapAdjustment;
+  realism_caps?: RealismCapResult;
+  gross_annual_impact?: number;
+  disclaimer?: string;
 }
 
 export interface CalculationResult {
@@ -95,4 +140,5 @@ export interface CalculationResult {
   missing_inputs: string[];
   available_inputs: string[];
   warnings: string[];
+  weak_case_flag?: boolean;
 }

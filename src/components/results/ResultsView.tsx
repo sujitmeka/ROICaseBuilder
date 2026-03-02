@@ -38,14 +38,14 @@ const CATEGORY_BADGE: Record<string, string> = {
 function ROIStatement({
   companyName,
   serviceType,
-  investment,
+  investmentBreakdown,
   annualImpact,
   roiMultiple,
   threeYearCumulative,
 }: {
   companyName: string;
   serviceType: string;
-  investment: string | null;
+  investmentBreakdown: ScenarioData["investment_breakdown"] | null;
   annualImpact: string;
   roiMultiple: string | null;
   threeYearCumulative: string;
@@ -54,16 +54,18 @@ function ROIStatement({
     <div className="relative rounded-xl p-[2px] bg-gradient-to-r from-blue-500 to-purple-500">
       <div className="rounded-[10px] bg-white px-6 py-8 sm:px-8">
         <p className="text-xl sm:text-2xl font-semibold text-gray-900 leading-relaxed select-text">
-          {investment ? (
+          {investmentBreakdown ? (
             <>
-              By investing{" "}
-              <span className="text-blue-700">{investment}</span> in{" "}
-              {serviceType},{" "}
+              With a total investment of{" "}
+              <span className="text-blue-700">
+                {formatCurrency(investmentBreakdown.total_investment)}
+              </span>{" "}
+              in {serviceType},{" "}
             </>
           ) : (
             <>Through {serviceType}, </>
           )}
-          <span className="font-bold">{companyName}</span> could realize{" "}
+          <span className="font-bold">{companyName}</span> has potential to unlock{" "}
           <span className="text-blue-700">{annualImpact}</span> in annual
           revenue impact
           {roiMultiple && (
@@ -71,13 +73,23 @@ function ROIStatement({
               {" "}
               &mdash; a{" "}
               <span className="text-purple-700 font-bold">{roiMultiple}</span>{" "}
-              return
+              return on total investment
             </>
           )}
           .
         </p>
-        <p className="mt-4 text-sm text-gray-500 select-text">
-          3-year cumulative impact:{" "}
+        {investmentBreakdown && (
+          <p className="mt-2 text-xs text-gray-400 select-text">
+            Investment: {formatCurrency(investmentBreakdown.consulting_fee)} consulting
+            {" + "}
+            {formatCurrency(investmentBreakdown.implementation_cost)} implementation
+            {investmentBreakdown.estimation_method === "auto_estimated" && (
+              <span className="italic"> (estimated)</span>
+            )}
+          </p>
+        )}
+        <p className="mt-2 text-sm text-gray-500 select-text">
+          3-year cumulative value (risk-adjusted):{" "}
           <span className="font-medium text-gray-700">
             {threeYearCumulative}
           </span>
@@ -87,17 +99,76 @@ function ROIStatement({
   );
 }
 
+function WeakCaseWarning() {
+  return (
+    <div
+      className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+      role="alert"
+    >
+      <span className="font-medium">Low ROI signal:</span> The conservative scenario
+      shows a return below 1.5x. This engagement may not produce a strong enough
+      financial case. Consider adjusting scope or investment level.
+    </div>
+  );
+}
+
+function OverlapNotice({ data }: { data: ScenarioData }) {
+  const overlap = data.overlap_adjustment;
+  if (!overlap || overlap.overlap_discount_pct < 0.005) return null;
+
+  return (
+    <div className="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+      Impact adjusted for driver overlap: gross{" "}
+      <span className="font-medium">{formatCurrency(overlap.gross_total)}</span>
+      {" → net "}
+      <span className="font-medium">{formatCurrency(overlap.adjusted_total)}</span>
+      {" "}
+      ({Math.round(overlap.overlap_discount_pct * 100)}% discount for correlated drivers)
+    </div>
+  );
+}
+
+function CapFootnotes({ data }: { data: ScenarioData }) {
+  const caps = data.realism_caps;
+  if (!caps || caps.cap_footnotes.length === 0) return null;
+
+  return (
+    <section className="space-y-2">
+      {caps.cap_footnotes.map((note, i) => (
+        <ConfidenceNote key={i} message={note} severity="info" />
+      ))}
+    </section>
+  );
+}
+
+function DisclaimerSection({ disclaimer }: { disclaimer: string }) {
+  return (
+    <section className="mt-4">
+      <p className="text-xs text-gray-400 leading-relaxed">
+        {disclaimer}
+      </p>
+    </section>
+  );
+}
+
 function MetricCard({ kpi }: { kpi: KpiResult }) {
   const badgeClass = CATEGORY_BADGE[kpi.category] ?? "bg-gray-50 text-gray-700 border-gray-200";
   const categoryLabel = CATEGORY_LABELS[kpi.category] ?? kpi.category;
+  const isCapped = kpi.capped_impact !== undefined && kpi.capped_impact < kpi.raw_impact;
+  const displayValue = isCapped ? kpi.capped_impact! : kpi.raw_impact;
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-5">
       <div className="mb-3">
         <h4 className="text-sm font-semibold text-gray-900">{kpi.kpi_label}</h4>
         <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
-          {formatCurrency(kpi.raw_impact)}
+          {formatCurrency(displayValue)}
         </p>
+        {isCapped && (
+          <p className="text-xs text-amber-600 mt-0.5">
+            Capped from {formatCurrency(kpi.raw_impact)}
+          </p>
+        )}
       </div>
 
       <p className="text-xs text-gray-500 mb-3">{kpi.formula_description}</p>
@@ -210,16 +281,20 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
 
   activeKpis.sort((a, b) => b.raw_impact - a.raw_impact);
 
-  const hasInvestment = data.engagement_cost > 0;
   const categories = [...categorySet];
+  const hasInvestment = data.investment_breakdown != null || data.engagement_cost > 0;
+  const showWeakCase = data.realism_caps?.weak_case_flag === true;
 
   return (
     <div className="space-y-8">
+      {/* Weak case warning */}
+      {showWeakCase && <WeakCaseWarning />}
+
       {/* Hero ROI Statement */}
       <ROIStatement
         companyName={result.company_name}
         serviceType={serviceType}
-        investment={hasInvestment ? formatCurrency(data.engagement_cost) : null}
+        investmentBreakdown={hasInvestment ? (data.investment_breakdown ?? null) : null}
         annualImpact={formatCurrency(data.total_annual_impact)}
         roiMultiple={
           hasInvestment && data.roi_multiple
@@ -228,6 +303,9 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
         }
         threeYearCumulative={formatCurrency(data.cumulative_3yr_impact)}
       />
+
+      {/* Overlap notice */}
+      <OverlapNotice data={data} />
 
       {/* Executive Summary — generated from data */}
       <section className="space-y-2">
@@ -271,7 +349,7 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
       {data.year_projections.length > 0 && (
         <section>
           <h3 className="text-base font-semibold text-gray-900 mb-4">
-            3-Year Outlook
+            3-Year Outlook (risk-adjusted)
           </h3>
           <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
             <div className="flex items-center gap-4 py-2 px-4 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -286,6 +364,9 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
           </div>
         </section>
       )}
+
+      {/* Realism cap footnotes */}
+      <CapFootnotes data={data} />
 
       {/* Warnings */}
       {result.warnings.length > 0 && (
@@ -324,6 +405,9 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
 
       {/* Calculation Narrative — isolated subscription to avoid re-rendering all KPI cards */}
       <NarrativeSection />
+
+      {/* Disclaimer */}
+      {data.disclaimer && <DisclaimerSection disclaimer={data.disclaimer} />}
     </div>
   );
 }

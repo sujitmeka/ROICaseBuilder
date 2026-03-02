@@ -175,6 +175,38 @@ export function CaseInputForm() {
         )}
       </div>
 
+      <div>
+        <label
+          htmlFor="estimatedImplementationCost"
+          className="block text-sm font-medium mb-1"
+        >
+          Estimated Implementation Cost{" "}
+          <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <p className="text-xs text-gray-500 mb-1">
+          Total cost to implement recommendations. Auto-estimated if blank.
+        </p>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+            $
+          </span>
+          <input
+            id="estimatedImplementationCost"
+            type="number"
+            min="1"
+            step="any"
+            placeholder="Auto-estimated if blank"
+            {...register("estimatedImplementationCost", { valueAsNumber: true })}
+            className="w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+        {errors.estimatedImplementationCost && (
+          <p className="mt-1 text-sm text-red-600">
+            {errors.estimatedImplementationCost.message}
+          </p>
+        )}
+      </div>
+
       {submitError && (
         <p className="text-sm text-red-600 bg-red-50 rounded-md p-3">
           {submitError}

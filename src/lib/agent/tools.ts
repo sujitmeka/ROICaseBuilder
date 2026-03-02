@@ -94,8 +94,13 @@ export const tools = {
           })
         )
         .describe("Agent-determined impact percentages per KPI per scenario. Keys are KPI IDs."),
+      estimated_implementation_cost: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Optional user-provided total implementation cost. If omitted, auto-estimated from engagement cost × industry multiplier."),
     }),
-    execute: async ({ company_data, service_type, impact_assumptions }) => {
+    execute: async ({ company_data, service_type, impact_assumptions, estimated_implementation_cost }) => {
       const methodology = await loadActiveMethodology(service_type);
       if (!methodology) {
         return { error: `No active methodology found for service_type="${service_type}"` };
@@ -107,7 +112,10 @@ export const tools = {
         fields: company_data.fields,
       };
 
-      const result = calculate(companyData, methodology, impact_assumptions as ImpactAssumptions);
+      const result = calculate(companyData, methodology, impact_assumptions as ImpactAssumptions, {
+        estimatedImplementationCost: estimated_implementation_cost,
+        serviceType: service_type,
+      });
       return result;
     },
   }),

@@ -19,19 +19,19 @@ export function HeroMetricBar({
 }: Props) {
   const metrics = [
     {
-      label: "Annual Impact",
+      label: "Annual Impact (net)",
       value: formatCurrency(totalImpact),
     },
     {
-      label: "ROI",
+      label: "ROTI",
       value: formatPercent(roi),
     },
     {
-      label: "ROI Multiple",
+      label: "ROTI Multiple",
       value: `${roiMultiple.toFixed(1)}x`,
     },
     {
-      label: "3-Year Cumulative",
+      label: "3-Yr Value (risk-adj.)",
       value: formatCurrency(threeYearCumulative),
     },
   ];

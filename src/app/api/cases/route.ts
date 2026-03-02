@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
       industry: parsed.data.industryVertical,
       company_type: parsed.data.companyType,
       estimated_project_cost: parsed.data.estimatedProjectCost,
+      estimated_implementation_cost: parsed.data.estimatedImplementationCost ?? null,
       service_type: parsed.data.serviceType,
       methodology_id: "experience-transformation-design",
       status: "started",

@@ -58,7 +58,7 @@ export async function POST(
   // Look up the case to get inputs
   const { data: caseRow, error: lookupError } = await supabase
     .from("cases")
-    .select("company_name, industry, company_type, estimated_project_cost, service_type, status")
+    .select("company_name, industry, company_type, estimated_project_cost, estimated_implementation_cost, service_type, status")
     .eq("id", caseId)
     .single();
 
@@ -98,6 +98,7 @@ export async function POST(
     industry: caseRow.industry,
     companyType: caseRow.company_type ?? "public",
     estimatedProjectCost: caseRow.estimated_project_cost,
+    estimatedImplementationCost: caseRow.estimated_implementation_cost ?? undefined,
     serviceType: caseRow.service_type,
     caseId,
   });

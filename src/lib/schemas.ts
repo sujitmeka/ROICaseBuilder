@@ -70,6 +70,10 @@ export const caseInputSchema = z.object({
   estimatedProjectCost: z
     .number({ message: "Please enter the estimated project cost" })
     .positive("Project cost must be greater than zero"),
+  estimatedImplementationCost: z
+    .number()
+    .positive("Implementation cost must be greater than zero")
+    .optional(),
   serviceType: z.enum(SERVICE_TYPES),
 });
 

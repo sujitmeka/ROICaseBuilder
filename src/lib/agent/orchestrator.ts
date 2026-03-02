@@ -213,32 +213,41 @@ commentary on their digital strategy.
 Write a brief internal assessment (2-3 sentences) before proceeding. This shapes
 your narrative later.
 
-### Step 4: Determine impact assumptions
+### Step 4: Determine impact assumptions (CRITICAL — scenarios must differ in SCOPE, not just percentages)
 For each enabled KPI in the methodology, reason about what impact percentage
 is realistic for THIS company across all three scenarios.
+
+**Scenario differentiation is essential.** The three scenarios MUST differ in which
+drivers are included, not just in percentage values:
+
+- **CONSERVATIVE:** Include ONLY the top 2 highest-confidence drivers where you have
+  strong company-specific data. Exclude KPIs where >50% of inputs are estimated/benchmarked.
+  Use the lower end of typical_range. Set impact to 0 for excluded KPIs (they'll appear
+  as skipped in the audit trail).
+- **MODERATE:** Include all medium+ confidence drivers. Benchmarks are acceptable for
+  up to 2 inputs per KPI. Use midpoint of typical_range.
+- **AGGRESSIVE:** Include ALL drivers including one optional "upside driver" that's
+  plausible but less certain. Use upper ranges of typical_range.
 
 For each KPI:
 1. Review the typical_range from the methodology (this is context, not a formula)
 2. Consider your maturity assessment from Step 3
 3. Consider the company's specific situation, competitive position, and digital readiness
-4. Determine three impact values:
-   - **conservative** — defensible floor, accounts for implementation friction
-   - **moderate** — most likely outcome based on industry evidence
-   - **aggressive** — achievable with strong execution and favorable conditions
+4. Determine three impact values following the scope rules above
 
 Your impact assumptions should reflect this specific company's situation. A digital
 leader may have less room for improvement (lower percentages). A company with dated
-digital experiences has more upside (higher percentages). A company in a mature
-digital industry (ecommerce) has different dynamics than one in an early-digital
-industry (insurance).
+digital experiences has more upside (higher percentages).
 
 Produce a structured impact_assumptions object:
 \`\`\`json
 {
   "conversion_rate_lift": { "conservative": 0.05, "moderate": 0.12, "aggressive": 0.20 },
-  "churn_reduction": { "conservative": 0.08, "moderate": 0.15, "aggressive": 0.25 }
+  "churn_reduction": { "conservative": 0, "moderate": 0.15, "aggressive": 0.25 },
+  "nps_referral_revenue": { "conservative": 0, "moderate": 0, "aggressive": 3 }
 }
 \`\`\`
+Note: setting conservative/moderate to 0 for low-confidence KPIs is correct and expected.
 Explain your reasoning briefly for each KPI before moving to Step 5.
 
 ### Step 5: Fill data gaps with benchmarks
@@ -280,6 +289,16 @@ After results return, sanity-check:
 Write 4-6 paragraphs for the Client Partner. This is the most important output —
 the CP will read this to understand and defend the numbers in client conversations.
 
+**Language rules (CRITICAL):**
+- Use "has potential to unlock" instead of "could realize"
+- Use "Return on Total Investment (ROTI)" instead of "ROI" — explain that ROTI
+  includes both consulting fees and estimated implementation costs
+- Use "3-Year Cumulative Value (risk-adjusted)" instead of "3-Year Cumulative"
+- When referencing the investment, show the breakdown: "(consulting fee + implementation cost)"
+- If the engine flagged overlap adjustments, explain briefly: "Gross impact of $X was
+  adjusted to $Y to account for overlap between related drivers"
+- Note which KPIs are included in conservative vs. aggressive and why
+
 Structure your narrative as follows:
 
 **Company context** (1 paragraph) — Summarize the company's financial position and
@@ -292,19 +311,19 @@ where? What's estimated vs. reported? This builds the CP's confidence in the inp
 **Key impact drivers** (1-2 paragraphs) — Walk through the 2-3 largest KPIs.
 For each, explain: what company-specific data went in, what impact assumption you used,
 and why that impact level is reasonable for THIS company given their maturity
-assessment. Connect impact to the company's specific situation, not just
-generic industry percentages.
+assessment. Note which drivers are in the conservative scenario and which only
+appear in moderate/aggressive.
 
 **Scenario recommendation** (1 paragraph) — Based on your maturity assessment,
 which scenario (conservative/moderate/aggressive) is the most defensible starting
-point for client conversations? Explain why. Reference your impact assumptions
-from Step 4 and explain why those percentages are appropriate. The CP needs to
-know which number to lead with and how to justify it.
+point for client conversations? Explain why. The CP needs to know which number to
+lead with and how to justify it.
 
 **Caveats** (1 paragraph) — Data gaps, lower-confidence estimates, and anything
 the CP should caveat when presenting. Be specific: "We estimated order volume
 from revenue and industry-average AOV because Nike doesn't disclose this metric"
-is useful. "Some data may be estimated" is not.
+is useful. "Some data may be estimated" is not. Mention that impact estimates
+include overlap adjustments and realism caps where applied.
 
 ## Principles
 
@@ -337,13 +356,14 @@ export function createPipelineStream(params: {
   industry: string;
   companyType: "public" | "private";
   estimatedProjectCost: number;
+  estimatedImplementationCost?: number;
   serviceType: string;
   caseId: string;
 }): {
   stream: ReadableStream;
   resultPromise: Promise<OrchestratorResult>;
 } {
-  const { companyName, industry, companyType, estimatedProjectCost, serviceType, caseId } = params;
+  const { companyName, industry, companyType, estimatedProjectCost, estimatedImplementationCost, serviceType, caseId } = params;
 
   // Deferred promise — resolved when stream completes, rejected on error.
   // Using manual pattern for Node 20 compatibility (Promise.withResolvers requires Node 22+).
@@ -360,13 +380,19 @@ export function createPipelineStream(params: {
     maximumFractionDigits: 0,
   }).format(estimatedProjectCost);
 
+  const implCostNote = estimatedImplementationCost
+    ? `The client has estimated total implementation cost at $${estimatedImplementationCost.toLocaleString()}. ` +
+      `Pass estimated_implementation_cost: ${estimatedImplementationCost} when calling run_calculation.`
+    : `No implementation cost was provided — the engine will auto-estimate it based on engagement cost and industry multipliers.`;
+
   const userTask =
     `Analyze the ROI case for ${companyName} in the ${industry} industry ` +
     `using the ${serviceType} methodology.\n\n` +
-    `The estimated project cost (engagement cost) is ${formattedCost}. ` +
+    `The estimated project cost (engagement/consulting fee) is ${formattedCost}. ` +
     `When calling run_calculation, include this as an "engagement_cost" field ` +
     `in the company_data.fields object with value ${estimatedProjectCost}, ` +
     `confidence_tier "company_reported", and confidence_score 1.0.\n\n` +
+    `${implCostNote}\n\n` +
     `Follow your process: load the methodology first, then gather financial ` +
     `data, fill gaps with web search benchmarks, and run the calculation.\n\n` +
     `The exact service_type slug for tool calls is "${serviceType}". ` +

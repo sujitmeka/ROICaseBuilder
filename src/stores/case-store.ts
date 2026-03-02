@@ -29,6 +29,8 @@ export interface KpiResult {
   category: string;
   skipped: boolean;
   skip_reason: string | null;
+  driver_category?: string;
+  capped_impact?: number;
 }
 
 export interface YearProjection {
@@ -49,6 +51,26 @@ export interface ScenarioData {
   engagement_cost: number;
   kpi_results: KpiResult[];
   skipped_kpis: string[];
+  investment_breakdown?: {
+    consulting_fee: number;
+    implementation_cost: number;
+    total_investment: number;
+    multiplier_used: number;
+    estimation_method: "user_provided" | "auto_estimated";
+  };
+  overlap_adjustment?: {
+    gross_total: number;
+    adjusted_total: number;
+    overlap_discount_pct: number;
+  };
+  realism_caps?: {
+    pre_cap_impact: number;
+    post_cap_impact: number;
+    cap_footnotes: string[];
+    weak_case_flag: boolean;
+  };
+  gross_annual_impact?: number;
+  disclaimer?: string;
 }
 
 export interface CalculationResult {
@@ -61,6 +83,7 @@ export interface CalculationResult {
   missing_inputs: string[];
   available_inputs: string[];
   warnings: string[];
+  weak_case_flag?: boolean;
 }
 
 interface CaseStore {
