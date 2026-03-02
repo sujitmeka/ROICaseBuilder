@@ -30,11 +30,11 @@ export function CaseInputForm() {
     },
   });
 
-  // Register all fields so react-hook-form tracks them
+  // Register fields that use custom components (setValue pattern).
+  // estimatedProjectCost uses a native <input> with {...register()} spread, so skip it here.
   register("companyName");
   register("industryVertical");
   register("companyType");
-  register("estimatedProjectCost", { valueAsNumber: true });
   register("serviceType");
 
   async function onSubmit(data: CaseInput) {
