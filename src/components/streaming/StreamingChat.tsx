@@ -18,6 +18,36 @@ const TOOL_LABELS: Record<string, string> = {
   web_search: "Searching the web",
 };
 
+/** Turn a raw Valyu query into a friendly label like "Reading Nike's 10-K filing" */
+function formatFinancialLabel(query: string): string {
+  const q = query.toLowerCase();
+
+  // Detect filing type
+  if (q.includes("10-k")) return `Reading ${extractCompany(query)}'s 10-K filing`;
+  if (q.includes("10-q")) return `Reading ${extractCompany(query)}'s 10-Q filing`;
+  if (q.includes("8-k")) return `Reading ${extractCompany(query)}'s 8-K filing`;
+
+  // Detect financial statement type
+  if (q.includes("balance sheet")) return `Pulling ${extractCompany(query)}'s balance sheet`;
+  if (q.includes("cash flow")) return `Pulling ${extractCompany(query)}'s cash flow`;
+  if (q.includes("income statement") || q.includes("income") && q.includes("revenue"))
+    return `Pulling ${extractCompany(query)}'s income data`;
+  if (q.includes("earnings")) return `Checking ${extractCompany(query)}'s earnings`;
+  if (q.includes("margin") || q.includes("ratio")) return `Analyzing ${extractCompany(query)}'s margins`;
+  if (q.includes("revenue") || q.includes("growth")) return `Searching ${extractCompany(query)}'s revenue data`;
+  if (q.includes("statistics") || q.includes("stats")) return `Pulling ${extractCompany(query)}'s financial stats`;
+
+  // Fallback: show truncated query
+  return `Searching financials: ${query.slice(0, 55)}`;
+}
+
+/** Extract the likely company name (first 1-2 capitalized words) from a query */
+function extractCompany(query: string): string {
+  // Match leading capitalized words (e.g. "Nike", "Warby Parker", "Under Armour")
+  const match = query.match(/^([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,2})/);
+  return match ? match[1] : query.split(" ").slice(0, 2).join(" ");
+}
+
 function getToolLabel(
   toolName: string,
   input: Record<string, unknown> | undefined,
@@ -26,10 +56,10 @@ function getToolLabel(
     return `Loading methodology for ${input.service_type}`;
   }
   if (toolName === "financial_data" && input?.query) {
-    return `Searching financials: ${(input.query as string).slice(0, 60)}`;
+    return formatFinancialLabel(input.query as string);
   }
-  if (toolName === "company_research" && input?.query) {
-    return `Researching: ${(input.query as string).slice(0, 60)}`;
+  if (toolName === "company_research" && input?.company) {
+    return `Researching ${input.company}`;
   }
   if (toolName === "scrape" && input?.url) {
     return `Scraping ${(input.url as string).slice(0, 50)}`;

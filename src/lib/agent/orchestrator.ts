@@ -58,15 +58,33 @@ const TOOL_STEP_MAP: Record<string, string> = {
 // Human-readable tool summaries
 // ---------------------------------------------------------------------------
 
+function summarizeFinancialQuery(query: string): string {
+  const q = query.toLowerCase();
+  // Match leading capitalized words for company name
+  const nameMatch = query.match(/^([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){0,2})/);
+  const company = nameMatch ? nameMatch[1] : query.split(" ").slice(0, 2).join(" ");
+
+  if (q.includes("10-k")) return `Reading ${company}'s 10-K filing`;
+  if (q.includes("10-q")) return `Reading ${company}'s 10-Q filing`;
+  if (q.includes("8-k")) return `Reading ${company}'s 8-K filing`;
+  if (q.includes("balance sheet")) return `Pulling ${company}'s balance sheet`;
+  if (q.includes("cash flow")) return `Pulling ${company}'s cash flow`;
+  if (q.includes("income")) return `Pulling ${company}'s income data`;
+  if (q.includes("earnings")) return `Checking ${company}'s earnings`;
+  if (q.includes("margin") || q.includes("ratio")) return `Analyzing ${company}'s margins`;
+  if (q.includes("revenue") || q.includes("growth")) return `Searching ${company}'s revenue data`;
+  return `Searching financials: ${query.slice(0, 55)}`;
+}
+
 function summarizeToolCall(
   toolName: string,
   args: Record<string, unknown>,
 ): string {
   switch (toolName) {
     case "financial_data":
-      return `Searching financial data: ${(args.query as string)?.slice(0, 60) ?? "financials"}`;
+      return summarizeFinancialQuery((args.query as string) ?? "financials");
     case "company_research":
-      return `Researching company: ${(args.query as string)?.slice(0, 60) ?? "company"}`;
+      return `Researching ${(args.company as string) ?? "company"}`;
     case "scrape":
       return `Scraping ${(args.url as string)?.slice(0, 50) ?? "webpage"}`;
     case "extract":
