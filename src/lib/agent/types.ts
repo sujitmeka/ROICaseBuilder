@@ -2,40 +2,41 @@
 export type Scenario = "conservative" | "moderate" | "aggressive";
 export type DataSourceTier = "company_reported" | "industry_benchmark" | "cross_industry" | "estimated";
 
-// === Methodology types (match Supabase schema) ===
-export interface BenchmarkRanges {
+// === Impact assumption types ===
+export interface TypicalRange {
+  low: number;
+  high: number;
+}
+
+export interface ScenarioImpact {
   conservative: number;
   moderate: number;
   aggressive: number;
 }
 
+export type ImpactAssumptions = Record<string, ScenarioImpact>;
+
+// === Methodology types (match Supabase schema) ===
 export interface KPIConfig {
   id: string;
   label: string;
-  weight: number;
   formula: string;
   inputs: string[];
-  benchmark_ranges: BenchmarkRanges;
-  benchmark_source: string;
   enabled: boolean;
-}
-
-export interface ConfidenceDiscounts {
-  company_reported: number;
-  industry_benchmark: number;
-  cross_industry: number;
-  estimated: number;
+  typical_range: TypicalRange;
+  reasoning_guidance: string;
+  reference_sources: string[];
 }
 
 export interface MethodologyConfig {
   id: string;
   name: string;
   version: string;
+  description: string;
   applicable_industries: string[];
   service_type: string;
   kpis: KPIConfig[];
   realization_curve: number[];
-  confidence_discounts: ConfidenceDiscounts;
 }
 
 // === Company Data ===
@@ -57,13 +58,8 @@ export interface KPIAuditEntry {
   kpi_label: string;
   formula_description: string;
   inputs_used: Record<string, number>;
-  benchmark_value: number;
-  benchmark_source: string;
+  impact_assumption: number;
   raw_impact: number;
-  confidence_discount: number;
-  adjusted_impact: number;
-  weight: number;
-  weighted_impact: number;
   category: string;
   skipped: boolean;
   skip_reason?: string;
@@ -80,7 +76,6 @@ export interface ScenarioResult {
   scenario: Scenario;
   kpi_results: KPIAuditEntry[];
   total_annual_impact: number;
-  total_annual_impact_unweighted: number;
   impact_by_category: Record<string, number>;
   year_projections: YearProjection[];
   cumulative_3yr_impact: number;
