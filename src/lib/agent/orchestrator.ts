@@ -409,6 +409,7 @@ export function createPipelineStream(params: {
           providerOptions: {
             anthropic: {
               thinking: { type: "adaptive" },
+              effort: "max",
             } satisfies AnthropicLanguageModelOptions,
           },
           tools: {
