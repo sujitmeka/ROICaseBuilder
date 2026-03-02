@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createUIMessageStreamResponse } from "ai";
 import { createPipelineStream } from "../../../../../lib/agent/orchestrator";
 
 export const runtime = "nodejs";
@@ -12,6 +11,39 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+/**
+ * Convert a UIMessageStream (object-mode ReadableStream) to an SSE Response.
+ *
+ * We avoid `createUIMessageStreamResponse` from the AI SDK because it chains
+ * two pipeThrough calls (JsonToSse → TextEncoder). Next.js 16 Turbopack has a
+ * bug where multiple chained pipeThrough calls on a Response body silently
+ * produce 0 bytes. This helper combines JSON serialization + text encoding
+ * into a single TransformStream to work around the issue.
+ */
+function toSSEResponse(stream: ReadableStream): Response {
+  const encoder = new TextEncoder();
+  const sseStream = stream.pipeThrough(
+    new TransformStream({
+      transform(chunk, controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+      },
+      flush(controller) {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      },
+    })
+  );
+
+  return new Response(sseStream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-vercel-ai-ui-message-stream": "v1",
+      "x-accel-buffering": "no",
+    },
+  });
+}
 
 export async function POST(
   request: NextRequest,
@@ -86,8 +118,6 @@ export async function POST(
     }
   });
 
-  // Return the streaming response
-  // createUIMessageStreamResponse wraps the ReadableStream with the correct
-  // headers (Content-Type, x-vercel-ai-ui-message-stream, etc.)
-  return createUIMessageStreamResponse({ stream });
+  // Return the streaming response using our single-pipeThrough workaround
+  return toSSEResponse(stream);
 }
