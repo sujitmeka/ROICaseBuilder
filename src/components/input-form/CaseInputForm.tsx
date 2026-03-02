@@ -159,7 +159,7 @@ export function CaseInputForm() {
             id="estimatedProjectCost"
             type="number"
             min="1"
-            step="1000"
+            step="any"
             placeholder="e.g. 500000"
             {...register("estimatedProjectCost", { valueAsNumber: true })}
             className="w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
