@@ -1,6 +1,8 @@
 "use client";
 
 import { memo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { formatCurrency } from "../../lib/utils";
 import { useCaseStore } from "../../stores/case-store";
 import type {
@@ -179,8 +181,10 @@ function NarrativeSection() {
         Analysis Notes
       </h3>
       <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
-          {narrative}
+        <div className="prose prose-sm max-w-none text-gray-700 prose-headings:text-gray-900 prose-strong:text-gray-800">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {narrative}
+          </ReactMarkdown>
         </div>
       </div>
     </section>

@@ -2,6 +2,8 @@
 
 import { memo, useState } from "react";
 import type { UIMessage } from "ai";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // ---------------------------------------------------------------------------
 // Tool display names and icons
@@ -409,12 +411,14 @@ function StreamingChatInner({ messages }: { messages: UIMessage[] }) {
   return (
     <div className="space-y-3">
       {allParts.map(({ part, key }) => {
-        // Text parts — show brief AI reasoning
+        // Text parts — render AI reasoning as markdown
         if (part.type === "text" && part.text?.trim()) {
           return (
-            <p key={key} className="text-sm text-gray-600 leading-relaxed">
-              {part.text}
-            </p>
+            <div key={key} className="prose prose-sm max-w-none text-gray-600 prose-headings:text-gray-900 prose-headings:text-base prose-strong:text-gray-800 prose-li:text-gray-600">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {part.text}
+              </ReactMarkdown>
+            </div>
           );
         }
 
