@@ -131,7 +131,7 @@ Prefer ${year} or ${year - 1} data. Do not cite older data unless nothing recent
 
 | Tool | Purpose |
 |------|---------|
-| load_methodology | **Call first.** Returns KPI definitions, input fields, benchmark ranges, realization curve. |
+| load_methodology | **Call first.** Returns KPI definitions, typical ranges, reasoning guidance, realization curve. |
 | finance_search | Valyu: financial statements, earnings, stock data. |
 | sec_search | Valyu: SEC filings (10-K, 10-Q, 8-K). |
 | company_research | Valyu: broad company intelligence. |
@@ -139,17 +139,18 @@ Prefer ${year} or ${year - 1} data. Do not cite older data unless nothing recent
 | extract | Firecrawl: extract structured data from a URL. |
 | firecrawl_search | Firecrawl: web search. |
 | web_search | Industry benchmarks, analyst reports, CX research. |
-| run_calculation | Deterministic engine: takes company_data + methodology → 3 scenarios. |
+| run_calculation | Deterministic engine: takes company_data + impact_assumptions → 3 scenarios. |
 
 ${dataStrategy}
 
 ## Process
 
-### Step 1: Load methodology
-Call load_methodology. Read the returned KPI definitions — they tell you exactly
-what input fields to gather (e.g., online_revenue, current_churn_rate, order_volume).
-The benchmark_ranges define the conservative/moderate/aggressive impact percentages
-the engine will apply. Understand these ranges before gathering data.
+### Step 1: Load methodology (research guide)
+Call load_methodology. The methodology is a research guide, not a formula:
+- **KPI definitions** tell you what metrics to evaluate and what company data inputs to gather
+- **typical_range** gives you context for what impact percentages are common across companies (NOT a fixed formula — you'll determine the actual values)
+- **reasoning_guidance** explains how to assess each KPI for this specific company
+- **reference_sources** suggest where to find supporting data
 
 ### Step 2: Gather company financials
 Follow the data strategy above. Your goal: populate every input field the methodology
@@ -182,7 +183,35 @@ commentary on their digital strategy.
 Write a brief internal assessment (2-3 sentences) before proceeding. This shapes
 your narrative later.
 
-### Step 4: Fill data gaps with benchmarks
+### Step 4: Determine impact assumptions
+For each enabled KPI in the methodology, reason about what impact percentage
+is realistic for THIS company across all three scenarios.
+
+For each KPI:
+1. Review the typical_range from the methodology (this is context, not a formula)
+2. Consider your maturity assessment from Step 3
+3. Consider the company's specific situation, competitive position, and digital readiness
+4. Determine three impact values:
+   - **conservative** — defensible floor, accounts for implementation friction
+   - **moderate** — most likely outcome based on industry evidence
+   - **aggressive** — achievable with strong execution and favorable conditions
+
+Your impact assumptions should reflect this specific company's situation. A digital
+leader may have less room for improvement (lower percentages). A company with dated
+digital experiences has more upside (higher percentages). A company in a mature
+digital industry (ecommerce) has different dynamics than one in an early-digital
+industry (insurance).
+
+Produce a structured impact_assumptions object:
+\`\`\`json
+{
+  "conversion_rate_lift": { "conservative": 0.05, "moderate": 0.12, "aggressive": 0.20 },
+  "churn_reduction": { "conservative": 0.08, "moderate": 0.15, "aggressive": 0.25 }
+}
+\`\`\`
+Explain your reasoning briefly for each KPI before moving to Step 5.
+
+### Step 5: Fill data gaps with benchmarks
 For each missing input field, search for real industry benchmark data.
 - Use specific queries: "[industry] average conversion rate ${year} Baymard Institute"
 - Prefer authoritative sources: Baymard, McKinsey, Forrester, Statista, Gartner
@@ -190,18 +219,24 @@ For each missing input field, search for real industry benchmark data.
 - Set confidence_tier to "industry_benchmark" (or "cross_industry" if the source
   is from a different vertical)
 
-### Step 5: Run calculation
-Compile all data into a single company_data object and call run_calculation:
+### Step 6: Run calculation
+Compile company data and your impact assumptions, then call run_calculation:
 \`\`\`json
 {
-  "company_name": "...",
-  "industry": "...",
-  "fields": {
-    "field_name": {
-      "value": 123,
-      "confidence_tier": "company_reported",
-      "confidence_score": 0.95
+  "company_data": {
+    "company_name": "...",
+    "industry": "...",
+    "fields": {
+      "field_name": {
+        "value": 123,
+        "confidence_tier": "company_reported",
+        "confidence_score": 0.95
+      }
     }
+  },
+  "service_type": "Experience Transformation & Design",
+  "impact_assumptions": {
+    "conversion_rate_lift": { "conservative": 0.05, "moderate": 0.12, "aggressive": 0.20 }
   }
 }
 \`\`\`
@@ -211,7 +246,7 @@ After results return, sanity-check:
 - Are any KPIs skipped? Can you find the missing data?
 - Do the three scenarios form a sensible range?
 
-### Step 6: Write the analysis narrative
+### Step 7: Write the analysis narrative
 Write 4-6 paragraphs for the Client Partner. This is the most important output —
 the CP will read this to understand and defend the numbers in client conversations.
 
@@ -225,15 +260,16 @@ company is a good candidate (or faces specific challenges) for CX investment.
 where? What's estimated vs. reported? This builds the CP's confidence in the inputs.
 
 **Key impact drivers** (1-2 paragraphs) — Walk through the 2-3 largest KPIs.
-For each, explain: what company-specific data went in, what benchmark was applied,
-and why that benchmark level is reasonable for THIS company given their maturity
+For each, explain: what company-specific data went in, what impact assumption you used,
+and why that impact level is reasonable for THIS company given their maturity
 assessment. Connect impact to the company's specific situation, not just
 generic industry percentages.
 
 **Scenario recommendation** (1 paragraph) — Based on your maturity assessment,
 which scenario (conservative/moderate/aggressive) is the most defensible starting
-point for client conversations? Explain why. The CP needs to know which number
-to lead with and how to justify it.
+point for client conversations? Explain why. Reference your impact assumptions
+from Step 4 and explain why those percentages are appropriate. The CP needs to
+know which number to lead with and how to justify it.
 
 **Caveats** (1 paragraph) — Data gaps, lower-confidence estimates, and anything
 the CP should caveat when presenting. Be specific: "We estimated order volume

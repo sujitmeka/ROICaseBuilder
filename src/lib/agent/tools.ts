@@ -2,7 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { supabase } from "../supabase";
 import { calculate } from "./calculation-engine";
-import type { CompanyData, MethodologyConfig } from "./types";
+import type { CompanyData, ImpactAssumptions, MethodologyConfig } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -19,7 +19,7 @@ export async function loadActiveMethodology(serviceType: string): Promise<Method
     .single();
 
   if (error || !data) return null;
-  if (!Array.isArray(data.kpis) || !data.confidence_discounts) return null;
+  if (!Array.isArray(data.kpis)) return null;
   return data as MethodologyConfig;
 }
 
@@ -30,7 +30,7 @@ export async function loadActiveMethodology(serviceType: string): Promise<Method
 export const tools = {
   load_methodology: tool({
     description:
-      "Load the active methodology config for a given service type from Supabase. Returns the full methodology JSON including KPI definitions, benchmark ranges, confidence discounts, and realization curve.",
+      "Load the active methodology research guide. Returns KPI definitions with typical ranges, reasoning guidance, and realization curve.",
     inputSchema: z.object({
       service_type: z
         .string()
@@ -47,7 +47,7 @@ export const tools = {
 
   run_calculation: tool({
     description:
-      "Run the full ROI calculation engine using company data and the active methodology. Loads the methodology from Supabase, then calculates conservative/moderate/aggressive scenarios with full audit trail.",
+      "Run the ROI calculation engine with company data and agent-determined impact assumptions. Loads the methodology, then calculates conservative/moderate/aggressive scenarios.",
     inputSchema: z.object({
       company_data: z
         .object({
@@ -73,8 +73,18 @@ export const tools = {
         })
         .describe("The company data with financial fields to use in calculations"),
       service_type: z.string().describe("The service type to load methodology for"),
+      impact_assumptions: z
+        .record(
+          z.string(),
+          z.object({
+            conservative: z.number(),
+            moderate: z.number(),
+            aggressive: z.number(),
+          })
+        )
+        .describe("Agent-determined impact percentages per KPI per scenario. Keys are KPI IDs."),
     }),
-    execute: async ({ company_data, service_type }) => {
+    execute: async ({ company_data, service_type, impact_assumptions }) => {
       const methodology = await loadActiveMethodology(service_type);
       if (!methodology) {
         return { error: `No active methodology found for service_type="${service_type}"` };
@@ -86,7 +96,7 @@ export const tools = {
         fields: company_data.fields,
       };
 
-      const result = calculate(companyData, methodology);
+      const result = calculate(companyData, methodology, impact_assumptions as ImpactAssumptions);
       return result;
     },
   }),
