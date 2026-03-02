@@ -1,7 +1,7 @@
 /**
  * Custom Valyu financial data tools with guardrails:
  * - Restricted to 6 financial datasets (no crypto, forex, BLS, etc.)
- * - Automatic date range (last 6 months → today)
+ * - Automatic date range (last 18 months → today)
  * - Agent can override dates if needed
  *
  * Replaces @valyu/ai-sdk's financeSearch + secSearch which are too broad
@@ -36,10 +36,10 @@ function today(): string {
   return new Date().toISOString().split("T")[0];
 }
 
-/** YYYY-MM-DD string for 6 months ago */
-function sixMonthsAgo(): string {
+/** YYYY-MM-DD string for 18 months ago — wide enough to capture annual 10-K filings */
+function eighteenMonthsAgo(): string {
   const d = new Date();
-  d.setMonth(d.getMonth() - 6);
+  d.setMonth(d.getMonth() - 18);
   return d.toISOString().split("T")[0];
 }
 
@@ -55,8 +55,8 @@ export function financialData(config: { apiKey?: string; maxNumResults?: number 
     description:
       "Search US public company financial data: SEC filings (10-K, 10-Q, 8-K), " +
       "earnings reports, balance sheets, income statements, cash flow statements, " +
-      "and financial statistics. Date range defaults to the last 6 months but can " +
-      "be overridden. Use specific queries like 'Nike 10-K annual revenue 2025'.",
+      "and financial statistics. Date range defaults to the last 18 months to capture " +
+      "annual filings. Use specific queries like 'Nike 10-K annual revenue 2025'.",
     inputSchema: z.object({
       query: z
         .string()
@@ -71,7 +71,7 @@ export function financialData(config: { apiKey?: string; maxNumResults?: number 
         .regex(/^\d{4}-\d{2}-\d{2}$/)
         .optional()
         .describe(
-          "Start date filter (YYYY-MM-DD). Defaults to 6 months ago. " +
+          "Start date filter (YYYY-MM-DD). Defaults to 18 months ago. " +
           "Override to search further back, e.g. '2023-01-01' for older filings."
         ),
       end_date: z
@@ -107,7 +107,7 @@ export function financialData(config: { apiKey?: string; maxNumResults?: number 
           search_type: "proprietary",
           max_num_results: max_num_results ?? defaultMaxResults,
           included_sources: [...FINANCIAL_SOURCES],
-          start_date: start_date ?? sixMonthsAgo(),
+          start_date: start_date ?? eighteenMonthsAgo(),
           end_date: end_date ?? today(),
           response_length: "medium",
         }),

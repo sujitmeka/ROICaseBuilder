@@ -8,7 +8,7 @@
  */
 
 import { streamText, stepCountIs, createUIMessageStream } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { anthropic, type AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
 import { companyResearch } from "@valyu/ai-sdk";
 import { financialData } from "./valyu-tools";
 import { scrapeTool, extractTool, searchTool } from "firecrawl-aisdk";
@@ -115,19 +115,24 @@ function getSystemPrompt(companyType: "public" | "private"): string {
 
 Use the financial_data tool as your PRIMARY data source. It searches 6 Valyu datasets:
 SEC filings, earnings, balance sheets, income statements, cash flow, and statistics.
-Date range defaults to the last 6 months → today. You can override dates if needed.
+Date range defaults to the last 18 months → today (wide enough to capture annual 10-K filings). You can override dates if needed.
 
 **Querying strategy:**
 1. Start with the most recent 10-K filing: "[Company] 10-K annual revenue and net income"
-2. Query specific metrics separately: "[Company] balance sheet total assets current liabilities"
-3. If a 10-K returns older data, try: "[Company] 10-Q most recent quarter revenue"
+2. Also check for recent 10-Q filings: "[Company] 10-Q most recent quarter revenue"
+   (10-Qs give you quarterly data that's more recent than the annual 10-K)
+3. Query specific metrics separately: "[Company] balance sheet total assets current liabilities"
 4. For growth metrics: "[Company] revenue growth rate year over year"
+
+**Important:** Many companies have fiscal years ending mid-year (e.g. Nike's FY ends May 31).
+A 10-K for "FY2025 ended May 2025" is the LATEST annual filing — it's not old data.
+Always check for more recent 10-Q filings to supplement the annual data.
 
 **Be specific.** Each query costs money. Ask for exactly the metrics you need in one query
 rather than making broad searches. Include the company name and metric in every query.
 
 - **financial_data** — SEC filings, earnings, balance sheets, income statements, cash flow, statistics.
-  Automatically filtered to last 6 months. Override start_date for older filings.
+  Automatically filtered to last 18 months. Override start_date for older filings.
 - **company_research** — Broad company intelligence overview (use sparingly, it's expensive).
 
 Do NOT search for crypto, forex, economic indicators, or market movers — these are irrelevant.`
@@ -158,7 +163,7 @@ Prefer ${year} or ${year - 1} data. Do not cite older data unless nothing recent
 | Tool | Purpose |
 |------|---------|
 | load_methodology | **Call first.** Returns KPI definitions, typical ranges, reasoning guidance, realization curve. |
-| financial_data | Valyu: SEC filings, earnings, balance sheets, income statements, cash flow, statistics. Date-filtered (last 6 months). |
+| financial_data | Valyu: SEC filings, earnings, balance sheets, income statements, cash flow, statistics. Date-filtered (last 18 months). |
 | company_research | Valyu: broad company intelligence (expensive — use sparingly). |
 | scrape | Firecrawl: scrape a URL to markdown. |
 | extract | Firecrawl: extract structured data from a URL. |
@@ -398,9 +403,14 @@ export function createPipelineStream(params: {
         } as PipelineDataPart);
 
         const result = streamText({
-          model: anthropic("claude-sonnet-4-5-20250929"),
+          model: anthropic("claude-opus-4-6"),
           system: getSystemPrompt(companyType),
           messages: [{ role: "user", content: userTask }],
+          providerOptions: {
+            anthropic: {
+              thinking: { type: "enabled", budgetTokens: 10000 },
+            } satisfies AnthropicLanguageModelOptions,
+          },
           tools: {
             ...tools,
             // Valyu financial data — restricted to 6 datasets with date guardrails (public companies only)
@@ -418,7 +428,7 @@ export function createPipelineStream(params: {
             web_search: anthropic.tools.webSearch_20250305({ maxUses: 10 }),
           },
           stopWhen: stepCountIs(20),
-          maxOutputTokens: 8192,
+          maxOutputTokens: 16000,
 
           experimental_onToolCallStart({ toolCall }) {
             if (!toolCall) return;
