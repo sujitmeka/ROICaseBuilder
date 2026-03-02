@@ -1,6 +1,6 @@
 "use client";
 
-import { formatCurrency, formatPercent } from "../../lib/utils";
+import { formatCurrency } from "../../lib/utils";
 import type {
   CalculationResult,
   ScenarioData,
@@ -18,18 +18,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   retention: "Retention & Loyalty",
   cost_savings: "Efficiency & Cost",
   engagement: "Engagement",
-};
-
-function confidenceLevel(discount: number): "high" | "medium" | "low" {
-  if (discount >= 0.85) return "high";
-  if (discount >= 0.6) return "medium";
-  return "low";
-}
-
-const CONFIDENCE_STYLES: Record<string, { dot: string; label: string }> = {
-  high: { dot: "bg-green-500", label: "High confidence" },
-  medium: { dot: "bg-yellow-500", label: "Medium confidence" },
-  low: { dot: "bg-red-500", label: "Low confidence" },
 };
 
 const CATEGORY_BADGE: Record<string, string> = {
@@ -96,8 +84,6 @@ function ROIStatement({
 }
 
 function MetricCard({ kpi }: { kpi: KpiResult }) {
-  const conf = confidenceLevel(kpi.confidence_discount);
-  const style = CONFIDENCE_STYLES[conf];
   const badgeClass = CATEGORY_BADGE[kpi.category] ?? "bg-gray-50 text-gray-700 border-gray-200";
   const categoryLabel = CATEGORY_LABELS[kpi.category] ?? kpi.category;
 
@@ -106,7 +92,7 @@ function MetricCard({ kpi }: { kpi: KpiResult }) {
       <div className="mb-3">
         <h4 className="text-sm font-semibold text-gray-900">{kpi.kpi_label}</h4>
         <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
-          {formatCurrency(kpi.weighted_impact)}
+          {formatCurrency(kpi.raw_impact)}
         </p>
       </div>
 
@@ -119,16 +105,8 @@ function MetricCard({ kpi }: { kpi: KpiResult }) {
           {categoryLabel}
         </span>
 
-        <span className="flex items-center gap-1.5 text-xs text-gray-500">
-          <span
-            className={`inline-block h-2 w-2 rounded-full ${style.dot}`}
-            aria-hidden="true"
-          />
-          {style.label}
-        </span>
-
         <span className="ml-auto text-xs font-medium text-gray-400 tabular-nums">
-          {Math.round(kpi.weight * 100)}%
+          {Math.round(kpi.impact_assumption * 100)}% est. impact
         </span>
       </div>
     </div>
@@ -196,12 +174,9 @@ export function ResultsView({ result, scenario, serviceType, narrative }: Props)
 
   const activeKpis = data.kpi_results
     .filter((k) => !k.skipped)
-    .sort((a, b) => b.weighted_impact - a.weighted_impact);
+    .sort((a, b) => b.raw_impact - a.raw_impact);
 
   const skippedKpis = data.kpi_results.filter((k) => k.skipped);
-  const lowConfidenceKpis = activeKpis.filter(
-    (k) => k.confidence_discount < 0.85
-  );
 
   const hasInvestment = data.engagement_cost > 0;
   const categories = [...new Set(activeKpis.map((k) => k.category))];
@@ -274,26 +249,6 @@ export function ResultsView({ result, scenario, serviceType, narrative }: Props)
               <ProjectionRow key={proj.year} projection={proj} />
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Confidence Notes */}
-      {lowConfidenceKpis.length > 0 && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-medium text-gray-500">
-            Data Quality Notes
-          </h3>
-          {lowConfidenceKpis.map((kpi) => (
-            <ConfidenceNote
-              key={kpi.kpi_id}
-              message={`${kpi.kpi_label}: ${Math.round(
-                kpi.confidence_discount * 100
-              )}% confidence — impact adjusted from ${formatCurrency(
-                kpi.raw_impact
-              )} to ${formatCurrency(kpi.adjusted_impact)}.`}
-              severity={kpi.confidence_discount < 0.6 ? "warning" : "info"}
-            />
-          ))}
         </section>
       )}
 

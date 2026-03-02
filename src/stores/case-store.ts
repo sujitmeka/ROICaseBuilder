@@ -24,11 +24,8 @@ export interface KpiResult {
   kpi_label: string;
   formula_description: string;
   inputs_used: Record<string, number>;
+  impact_assumption: number;
   raw_impact: number;
-  adjusted_impact: number;
-  weighted_impact: number;
-  weight: number;
-  confidence_discount: number;
   category: string;
   skipped: boolean;
   skip_reason: string | null;
@@ -44,7 +41,6 @@ export interface YearProjection {
 export interface ScenarioData {
   scenario: string;
   total_annual_impact: number;
-  total_annual_impact_unweighted: number;
   impact_by_category: Record<string, number>;
   year_projections: YearProjection[];
   cumulative_3yr_impact: number;
