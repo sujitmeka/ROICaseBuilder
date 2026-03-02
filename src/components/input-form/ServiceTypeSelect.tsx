@@ -2,6 +2,11 @@
 
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from "../../lib/schemas";
 
+const SERVICE_OPTIONS = SERVICE_TYPES.map((key) => ({
+  key,
+  label: SERVICE_TYPE_LABELS[key],
+}));
+
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -16,9 +21,9 @@ export function ServiceTypeSelect({ value, onChange }: Props) {
       aria-label="Service Type"
       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
     >
-      {SERVICE_TYPES.map((key) => (
+      {SERVICE_OPTIONS.map(({ key, label }) => (
         <option key={key} value={key}>
-          {SERVICE_TYPE_LABELS[key]}
+          {label}
         </option>
       ))}
     </select>

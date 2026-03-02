@@ -79,11 +79,14 @@ export async function POST(
     );
   }
 
-  // Mark as in_progress to prevent duplicate pipeline runs
-  await supabase
+  // Fire-and-forget: don't block stream creation on status update.
+  // .then() is required to trigger the Supabase PostgREST HTTP request.
+  // If this fails, the after() callback will set status to "completed" or "error" anyway.
+  supabase
     .from("cases")
     .update({ status: "in_progress" })
-    .eq("id", caseId);
+    .eq("id", caseId)
+    .then();
 
   // Create the pipeline stream
   const { stream, resultPromise } = createPipelineStream({

@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { caseInputSchema, type CaseInput } from "../../lib/schemas";
 import { CompanyAutocomplete } from "./CompanyAutocomplete";
 import { IndustrySelect } from "./IndustrySelect";
@@ -12,6 +12,7 @@ import { ServiceTypeSelect } from "./ServiceTypeSelect";
 export function CaseInputForm() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -51,7 +52,9 @@ export function CaseInputForm() {
         throw new Error(body.error || `Server error (${res.status})`);
       }
       const { caseId } = await res.json();
-      router.push(`/cases/${caseId}`);
+      startTransition(() => {
+        router.push(`/cases/${caseId}`);
+      });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Something went wrong");
       setIsSubmitting(false);
@@ -180,10 +183,10 @@ export function CaseInputForm() {
 
       <button
         type="submit"
-        disabled={isSubmitting}
+        disabled={isSubmitting || isPending}
         className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {isSubmitting ? "Starting analysis..." : "Generate ROI Case"}
+        {isSubmitting ? "Starting analysis..." : isPending ? "Navigating..." : "Generate ROI Case"}
       </button>
     </form>
   );

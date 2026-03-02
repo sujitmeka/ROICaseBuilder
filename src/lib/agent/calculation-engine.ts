@@ -12,8 +12,13 @@ export function calculate(
   methodology: MethodologyConfig,
   impactAssumptions: ImpactAssumptions,
 ): CalculationResult {
-  const enabledKpis = methodology.kpis.filter((k) => k.enabled);
-  const requiredInputs = new Set(enabledKpis.flatMap((k) => k.inputs));
+  const enabledKpis: KPIConfig[] = [];
+  const requiredInputs = new Set<string>();
+  for (const k of methodology.kpis) {
+    if (!k.enabled) continue;
+    enabledKpis.push(k);
+    for (const input of k.inputs) requiredInputs.add(input);
+  }
   const availableInputs = new Set(Object.keys(companyData.fields));
   const missing = [...requiredInputs].filter((i) => !availableInputs.has(i));
   const completeness = requiredInputs.size > 0
@@ -50,18 +55,16 @@ function runScenario(
 ): ScenarioResult {
   const kpiResults: KPIAuditEntry[] = [];
   const skippedKpis: string[] = [];
+  const impactByCategory: Record<string, number> = {};
+  let totalImpact = 0;
 
   for (const kpiConfig of enabledKpis) {
     const entry = calculateSingleKpi(companyData, kpiConfig, impactAssumptions, scenario);
     kpiResults.push(entry);
-    if (entry.skipped) skippedKpis.push(entry.kpi_id);
-  }
-
-  const totalImpact = kpiResults.filter((e) => !e.skipped).reduce((s, e) => s + e.raw_impact, 0);
-
-  const impactByCategory: Record<string, number> = {};
-  for (const entry of kpiResults) {
-    if (!entry.skipped) {
+    if (entry.skipped) {
+      skippedKpis.push(entry.kpi_id);
+    } else {
+      totalImpact += entry.raw_impact;
       impactByCategory[entry.category] = (impactByCategory[entry.category] ?? 0) + entry.raw_impact;
     }
   }

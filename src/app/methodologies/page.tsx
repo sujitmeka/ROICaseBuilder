@@ -1,7 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 interface KPI {
@@ -83,27 +80,21 @@ function KPICard({ kpi }: { kpi: KPI }) {
   );
 }
 
-export default function MethodologiesPage() {
-  const [methodologies, setMethodologies] = useState<Methodology[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default async function MethodologiesPage() {
+  const { data: methodologies, error } = await supabase
+    .from("methodologies")
+    .select("*")
+    .eq("enabled", true);
 
-  useEffect(() => {
-    async function load() {
-      const { data, error: err } = await supabase
-        .from("methodologies")
-        .select("*")
-        .eq("enabled", true);
-
-      if (err) {
-        setError(err.message);
-      } else {
-        setMethodologies(data ?? []);
-      }
-      setLoading(false);
-    }
-    load();
-  }, []);
+  if (error) {
+    return (
+      <main className="max-w-4xl mx-auto px-6 py-12">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error.message}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-12">
@@ -115,17 +106,7 @@ export default function MethodologiesPage() {
         provides guidance for company-specific impact analysis.
       </p>
 
-      {loading && (
-        <div className="mt-12 text-center text-gray-400">Loading methodologies...</div>
-      )}
-
-      {error && (
-        <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {methodologies.map((m) => (
+      {(methodologies ?? []).map((m: Methodology) => (
         <div key={m.id} className="mt-8">
           <div className="border border-gray-200 rounded-lg bg-white p-6">
             <div className="flex items-start justify-between gap-4">

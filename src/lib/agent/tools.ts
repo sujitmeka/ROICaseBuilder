@@ -8,7 +8,11 @@ import type { CompanyData, ImpactAssumptions, MethodologyConfig } from "./types"
 // Helpers
 // ---------------------------------------------------------------------------
 
+let cachedMethodology: { key: string; value: MethodologyConfig } | null = null;
+
 export async function loadActiveMethodology(serviceType: string): Promise<MethodologyConfig | null> {
+  if (cachedMethodology?.key === serviceType) return cachedMethodology.value;
+
   const { data, error } = await supabase
     .from("methodologies")
     .select("*")
@@ -20,7 +24,8 @@ export async function loadActiveMethodology(serviceType: string): Promise<Method
 
   if (error || !data) return null;
   if (!Array.isArray(data.kpis)) return null;
-  return data as MethodologyConfig;
+  cachedMethodology = { key: serviceType, value: data as MethodologyConfig };
+  return cachedMethodology.value;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,7 +39,7 @@ export const tools = {
     inputSchema: z.object({
       service_type: z
         .string()
-        .describe("The service type to load methodology for, e.g. 'Experience Transformation & Design'"),
+        .describe("The service type to load methodology for, e.g. 'experience-transformation-design'"),
     }),
     execute: async ({ service_type }) => {
       const methodology = await loadActiveMethodology(service_type);

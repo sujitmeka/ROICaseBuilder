@@ -1,13 +1,21 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { usePipelineStream } from "../../../hooks/use-event-stream";
 import { useStreamStore } from "../../../stores/stream-store";
 import { useCaseStore } from "../../../stores/case-store";
-import { StreamingChat } from "../../../components/streaming/StreamingChat";
 import { HeroMetricBar } from "../../../components/results/HeroMetricBar";
 import { ScenarioToggle } from "../../../components/results/ScenarioToggle";
-import { ResultsView } from "../../../components/results/ResultsView";
+
+const StreamingChat = dynamic(
+  () => import("../../../components/streaming/StreamingChat").then(m => ({ default: m.StreamingChat })),
+  { ssr: false }
+);
+const ResultsView = dynamic(
+  () => import("../../../components/results/ResultsView").then(m => ({ default: m.ResultsView })),
+  { ssr: false }
+);
 
 export default function CasePage() {
   const params = useParams();
@@ -19,8 +27,6 @@ export default function CasePage() {
   const activeScenario = useCaseStore((s) => s.activeScenario);
   const companyName = useCaseStore((s) => s.companyName);
   const serviceType = useCaseStore((s) => s.serviceType);
-  const narrative = useCaseStore((s) => s.narrative);
-
   // Connect to AI SDK streaming pipeline
   const { isConnected, messages } = usePipelineStream(caseId);
 
@@ -61,7 +67,6 @@ export default function CasePage() {
             result={results}
             scenario={activeScenario}
             serviceType={serviceType || "Experience Transformation & Design"}
-            narrative={narrative}
           />
         </div>
       </main>

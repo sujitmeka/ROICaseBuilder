@@ -1,9 +1,26 @@
 export default function CaseLoading() {
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="mt-4 text-gray-500">Loading analysis...</p>
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-2xl mx-auto px-6 py-16">
+        <div className="animate-pulse text-center mb-12">
+          <div className="h-8 w-64 bg-gray-200 rounded mx-auto" />
+          <div className="h-4 w-48 bg-gray-200 rounded mx-auto mt-3" />
+        </div>
+
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-3"
+            >
+              <div className="animate-pulse flex items-center gap-3">
+                <div className="h-5 w-5 bg-gray-200 rounded-full flex-shrink-0" />
+                <div className="h-4 bg-gray-200 rounded flex-1" />
+                <div className="h-4 w-4 bg-gray-200 rounded flex-shrink-0" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </main>
   );

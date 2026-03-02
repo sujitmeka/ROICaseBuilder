@@ -99,11 +99,12 @@ function getSystemPrompt(companyType: "public" | "private"): string {
 
 Use Valyu's structured financial datasets as your primary data source:
 - **finance_search** — Query for specific metrics: revenue, net income, margins, growth rates.
-  Use specific queries like "Nike annual revenue ${year}" or "Nike gross margin".
+  Use specific queries like "[Company] 10-K annual report revenue ${year}" or "[Company] gross margin fiscal year ${year}".
 - **sec_search** — Query SEC filings (10-K, 10-Q, 8-K) for detailed financial data.
-  Use queries like "Nike 10-K annual report revenue".
+  Use queries like "[Company] 10-K annual report revenue ${year}".
 - **company_research** — Get a broad company overview with funding, valuation, market data.
 
+Query for the most recent 10-K filing first. If that returns older data, try quarterly (10-Q) filings.
 These tools return structured data from real financial sources. Be specific in your queries.`
     : `## Data Strategy: PRIVATE Company
 
@@ -234,7 +235,7 @@ Compile company data and your impact assumptions, then call run_calculation:
       }
     }
   },
-  "service_type": "Experience Transformation & Design",
+  "service_type": "experience-transformation-design",
   "impact_assumptions": {
     "conversion_rate_lift": { "conservative": 0.05, "moderate": 0.12, "aggressive": 0.20 }
   }
@@ -338,7 +339,9 @@ export function createPipelineStream(params: {
     `in the company_data.fields object with value ${estimatedProjectCost}, ` +
     `confidence_tier "company_reported", and confidence_score 1.0.\n\n` +
     `Follow your process: load the methodology first, then gather financial ` +
-    `data, fill gaps with web search benchmarks, and run the calculation.`;
+    `data, fill gaps with web search benchmarks, and run the calculation.\n\n` +
+    `The exact service_type slug for tool calls is "${serviceType}". ` +
+    `Use this exact string when calling load_methodology and run_calculation.`;
 
   let scenarios: Record<string, unknown> = {};
   let benchmarksStarted = false;

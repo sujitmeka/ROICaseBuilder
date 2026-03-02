@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useStreamStore } from "../stores/stream-store";
@@ -46,10 +46,18 @@ export function usePipelineStream(caseId: string | null) {
   const setResult = useCaseStore((s) => s.setResult);
   const hasStarted = useRef(false);
 
+  // Memoize the transport so the URL is only constructed when caseId changes,
+  // avoiding a new DefaultChatTransport instance on every render.
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: caseId ? `/api/cases/${caseId}/stream` : "/api/chat",
+      }),
+    [caseId]
+  );
+
   const chatHelpers = useChat({
-    transport: new DefaultChatTransport({
-      api: caseId ? `/api/cases/${caseId}/stream` : "/api/chat",
-    }),
+    transport,
     experimental_throttle: 50,
 
     onData: (dataPart) => {

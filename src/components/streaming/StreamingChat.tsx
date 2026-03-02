@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { UIMessage } from "ai";
 
 // ---------------------------------------------------------------------------
@@ -95,7 +95,90 @@ function ToolOutputSummary({
     }
   }
 
-  // Fallback: show nothing for unknown tools
+  if (toolName === "finance_search" || toolName === "sec_search") {
+    // Valyu returns structured financial data
+    const results = (data.results ?? data.data) as
+      | Array<Record<string, unknown>>
+      | undefined;
+    if (results && results.length > 0) {
+      return (
+        <div className="text-sm text-gray-600 space-y-1">
+          <p className="font-medium text-gray-700">
+            Found {results.length} result{results.length > 1 ? "s" : ""}
+          </p>
+        </div>
+      );
+    }
+    // If no structured results, show a generic summary
+    const keys = Object.keys(data)
+      .filter((k) => k !== "error")
+      .slice(0, 3);
+    if (keys.length > 0) {
+      return (
+        <div className="text-sm text-gray-600 space-y-1">
+          {keys.map((k) => (
+            <p key={k} className="truncate">
+              <span className="font-medium text-gray-700">{k}:</span>{" "}
+              {String(data[k]).slice(0, 100)}
+            </p>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  if (toolName === "company_research") {
+    const name = data.name ?? data.company_name;
+    return (
+      <div className="text-sm text-gray-600">
+        {name != null && (
+          <p className="font-medium text-gray-700">{String(name)}</p>
+        )}
+        {data.description != null && (
+          <p className="truncate">
+            {String(data.description).slice(0, 150)}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (toolName === "scrape" || toolName === "extract") {
+    const url = data.url ?? data.source_url;
+    const title = data.title;
+    return (
+      <div className="text-sm text-gray-600">
+        {title != null && (
+          <p className="font-medium text-gray-700">{String(title)}</p>
+        )}
+        {url != null && (
+          <p className="text-xs text-gray-400 truncate">{String(url)}</p>
+        )}
+      </div>
+    );
+  }
+
+  // Generic fallback: show first few keys for any tool with output
+  const fallbackKeys = Object.keys(data)
+    .filter((k) => k !== "error" && data[k] != null)
+    .slice(0, 4);
+  if (fallbackKeys.length > 0) {
+    return (
+      <div className="text-sm text-gray-600 space-y-1">
+        {fallbackKeys.map((k) => (
+          <p key={k} className="truncate">
+            <span className="font-medium text-gray-700">
+              {k.replace(/_/g, " ")}:
+            </span>{" "}
+            {typeof data[k] === "object"
+              ? JSON.stringify(data[k]).slice(0, 80)
+              : String(data[k]).slice(0, 100)}
+          </p>
+        ))}
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -155,7 +238,7 @@ function WebSearchResults({ output }: { output: unknown }) {
 // Collapsible tool call section
 // ---------------------------------------------------------------------------
 
-function ToolCallSection({
+const ToolCallSection = memo(function ToolCallSection({
   toolName,
   state,
   input,
@@ -227,7 +310,7 @@ function ToolCallSection({
       )}
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Source URL link

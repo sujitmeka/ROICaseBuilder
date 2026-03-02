@@ -2,6 +2,11 @@
 
 import { INDUSTRY_VERTICALS, INDUSTRY_LABELS } from "../../lib/schemas";
 
+const INDUSTRY_OPTIONS = INDUSTRY_VERTICALS.map((key) => ({
+  key,
+  label: INDUSTRY_LABELS[key],
+}));
+
 interface Props {
   value: string | undefined;
   onChange: (value: string) => void;
@@ -19,9 +24,9 @@ export function IndustrySelect({ value, onChange }: Props) {
       <option value="" disabled>
         Select industry...
       </option>
-      {INDUSTRY_VERTICALS.map((key) => (
+      {INDUSTRY_OPTIONS.map(({ key, label }) => (
         <option key={key} value={key}>
-          {INDUSTRY_LABELS[key]}
+          {label}
         </option>
       ))}
     </select>

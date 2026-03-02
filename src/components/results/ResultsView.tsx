@@ -1,6 +1,7 @@
 "use client";
 
 import { formatCurrency } from "../../lib/utils";
+import { useCaseStore } from "../../stores/case-store";
 import type {
   CalculationResult,
   ScenarioData,
@@ -166,20 +167,46 @@ interface Props {
   result: CalculationResult;
   scenario: Scenario;
   serviceType: string;
-  narrative: string;
 }
 
-export function ResultsView({ result, scenario, serviceType, narrative }: Props) {
+function NarrativeSection() {
+  const narrative = useCaseStore((s) => s.narrative);
+  if (!narrative) return null;
+  return (
+    <section className="space-y-2">
+      <h3 className="text-base font-semibold text-gray-900">
+        Analysis Notes
+      </h3>
+      <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
+          {narrative}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function ResultsView({ result, scenario, serviceType }: Props) {
   const data: ScenarioData = result.scenarios[scenario];
 
-  const activeKpis = data.kpi_results
-    .filter((k) => !k.skipped)
-    .sort((a, b) => b.raw_impact - a.raw_impact);
+  // Single pass: partition into active vs skipped and collect unique categories
+  const activeKpis: KpiResult[] = [];
+  const skippedKpis: KpiResult[] = [];
+  const categorySet = new Set<string>();
 
-  const skippedKpis = data.kpi_results.filter((k) => k.skipped);
+  for (const k of data.kpi_results) {
+    if (k.skipped) {
+      skippedKpis.push(k);
+    } else {
+      activeKpis.push(k);
+      categorySet.add(k.category);
+    }
+  }
+
+  activeKpis.sort((a, b) => b.raw_impact - a.raw_impact);
 
   const hasInvestment = data.engagement_cost > 0;
-  const categories = [...new Set(activeKpis.map((k) => k.category))];
+  const categories = [...categorySet];
 
   return (
     <div className="space-y-8">
@@ -224,7 +251,10 @@ export function ResultsView({ result, scenario, serviceType, narrative }: Props)
           <h3 className="text-base font-semibold text-gray-900 mb-4">
             Impact Breakdown
           </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div
+            className="grid gap-4 sm:grid-cols-2"
+            style={{ contentVisibility: "auto", containIntrinsicSize: "auto 200px" }}
+          >
             {activeKpis.map((kpi) => (
               <MetricCard key={kpi.kpi_id} kpi={kpi} />
             ))}
@@ -287,19 +317,8 @@ export function ResultsView({ result, scenario, serviceType, narrative }: Props)
         </section>
       )}
 
-      {/* Calculation Narrative */}
-      {narrative && (
-        <section className="space-y-2">
-          <h3 className="text-base font-semibold text-gray-900">
-            Analysis Notes
-          </h3>
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
-              {narrative}
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Calculation Narrative — isolated subscription to avoid re-rendering all KPI cards */}
+      <NarrativeSection />
     </div>
   );
 }

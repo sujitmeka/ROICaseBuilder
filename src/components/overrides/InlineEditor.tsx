@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useOverrideStore } from "../../stores/override-store";
 import { Pencil } from "lucide-react";
 
@@ -18,15 +18,15 @@ export function InlineEditor({
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(currentValue));
-  const inputRef = useRef<HTMLInputElement>(null);
   const applyOverride = useOverrideStore((s) => s.applyOverride);
 
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+  // Callback ref: focuses and selects the input as soon as it mounts
+  const inputRef = useCallback((node: HTMLInputElement | null) => {
+    if (node) {
+      node.focus();
+      node.select();
     }
-  }, [isEditing]);
+  }, []);
 
   const handleConfirm = () => {
     const numValue = parseFloat(editValue);
