@@ -56,7 +56,8 @@ export function financialData(config: { apiKey?: string; maxNumResults?: number 
       "Search US public company financial data: SEC filings (10-K, 10-Q, 8-K), " +
       "earnings reports, balance sheets, income statements, cash flow statements, " +
       "and financial statistics. Date range defaults to the last 18 months to capture " +
-      "annual filings. Use specific queries like 'Nike 10-K annual revenue 2025'.",
+      "annual filings. ALWAYS include the year in your query to get the most recent " +
+      "data (e.g. 'Nike 10-K annual revenue FY2025', not just 'Nike 10-K revenue').",
     inputSchema: z.object({
       query: z
         .string()
@@ -64,7 +65,8 @@ export function financialData(config: { apiKey?: string; maxNumResults?: number 
         .max(500)
         .describe(
           "Natural language query. Be specific: include company name, filing type, " +
-          "and metric. E.g. 'Apple 10-K annual revenue and net income FY2025'"
+          "metric, AND year. E.g. 'Apple 10-K annual revenue and net income FY2025'. " +
+          "Always include 'most recent' or the current/prior fiscal year to avoid older results."
         ),
       start_date: z
         .string()

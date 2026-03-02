@@ -117,12 +117,12 @@ Use the financial_data tool as your PRIMARY data source. It searches 6 Valyu dat
 SEC filings, earnings, balance sheets, income statements, cash flow, and statistics.
 Date range defaults to the last 18 months → today (wide enough to capture annual 10-K filings). You can override dates if needed.
 
-**Querying strategy:**
-1. Start with the most recent 10-K filing: "[Company] 10-K annual revenue and net income"
-2. Also check for recent 10-Q filings: "[Company] 10-Q most recent quarter revenue"
+**Querying strategy — ALWAYS include the year to anchor results to the most recent data:**
+1. Start with the most recent 10-K: "[Company] 10-K annual revenue and net income FY${year}" or FY${year - 1}
+2. Also check for recent 10-Q: "[Company] 10-Q most recent quarter revenue ${year}"
    (10-Qs give you quarterly data that's more recent than the annual 10-K)
-3. Query specific metrics separately: "[Company] balance sheet total assets current liabilities"
-4. For growth metrics: "[Company] revenue growth rate year over year"
+3. Query specific metrics with year: "[Company] balance sheet total assets ${year}"
+4. For growth metrics: "[Company] revenue growth rate year over year ${year}"
 
 **Important:** Many companies have fiscal years ending mid-year (e.g. Nike's FY ends May 31).
 A 10-K for "FY2025 ended May 2025" is the LATEST annual filing — it's not old data.
