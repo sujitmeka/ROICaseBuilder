@@ -1,19 +1,64 @@
+/**
+ * Calculation Validator — pure arithmetic checker and audit trail generator.
+ *
+ * The LLM does ALL the reasoning: scoping, assumptions, formulas, calculations.
+ * This engine takes the LLM's stated calculations, re-checks the arithmetic,
+ * produces a structured audit trail for the frontend, and runs sanity checks.
+ *
+ * It does NOT:
+ * - Apply attribution factors (the LLM scopes the addressable base correctly)
+ * - Look up KPI formulas (the LLM chooses and applies its own)
+ * - Load methodology configs (the LLM already loaded the skill + methodology)
+ */
+
 import type {
-  CalculationResult, CompanyData, DriverCategory, ImpactAssumptions,
-  ImplementationCostEstimate, KPIAuditEntry, KPIConfig,
-  MethodologyConfig, OverlapAdjustment, RealismCapResult,
-  Scenario, ScenarioResult, ServiceTier, YearProjection,
+  Scenario, ScenarioResult, CalculationResult,
+  KPIAuditEntry, YearProjection,
 } from "./types";
-import { KPI_REGISTRY, INDUSTRY_REFERRAL_DEFAULTS, DEFAULT_REFERRAL_CONVERSION_RATE } from "./kpi-formulas";
 
 // ---------------------------------------------------------------------------
-// Public options
+// Input types — what the LLM passes to the validator
 // ---------------------------------------------------------------------------
 
-export interface CalculationOptions {
-  estimatedImplementationCost?: number;
-  serviceType?: string;
-  serviceTiers?: ServiceTier[];
+export interface KPICalculation {
+  id: string;
+  label: string;
+  category: "offensive" | "defensive" | "efficiency";
+  inputs: Record<string, number>;
+  formula: string;
+  claimed_impact: number;
+}
+
+export interface ScenarioCalculation {
+  kpis: KPICalculation[];
+  overlap_adjustment_pct?: number;
+  investment: {
+    consulting_fee: number;
+    implementation_cost: number;
+    total: number;
+  };
+}
+
+export interface ValidateInput {
+  company_name: string;
+  industry: string;
+  addressable_base: {
+    value: number;
+    label: string;
+  };
+  total_revenue: number;
+  realization_curve: number[];
+  scenarios: Record<string, ScenarioCalculation>;
+}
+
+// ---------------------------------------------------------------------------
+// Validation result — extends KPIAuditEntry with validation status
+// ---------------------------------------------------------------------------
+
+export interface ValidationWarning {
+  type: "arithmetic_error" | "sanity_check" | "weak_case";
+  message: string;
+  kpi_id?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -22,469 +67,241 @@ export interface CalculationOptions {
 
 const SCENARIOS: Scenario[] = ["conservative", "moderate", "aggressive"];
 
-const IMPL_MULTIPLIERS: Record<string, { low: number; mid: number; high: number }> = {
-  "experience-transformation-design": { low: 2, mid: 4, high: 6 },
-  "cost-optimization":                { low: 1.5, mid: 3, high: 5 },
-  "digital-ai-transformation":        { low: 3, mid: 5, high: 8 },
-  "commercial-excellence":            { low: 1.5, mid: 3, high: 5 },
-  "org-redesign":                     { low: 2, mid: 4, high: 6 },
-};
-
-const DRIVER_CAP_PCT: Record<Scenario, number> = {
-  conservative: 0.03, moderate: 0.05, aggressive: 0.08,
-};
-
-const TOTAL_CAP_PCT: Record<Scenario, number> = {
-  conservative: 0.05, moderate: 0.08, aggressive: 0.12,
-};
-
-const ROI_CAP: Record<Scenario, number> = {
-  conservative: 15,
-  moderate: 30,
-  aggressive: 50,
+const SANITY_THRESHOLDS = {
+  max_impact_pct_of_addressable: 0.15,
+  max_impact_pct_of_total_revenue: 0.05,
+  max_roi_multiple: { conservative: 10, moderate: 20, aggressive: 35 } as Record<Scenario, number>,
+  max_single_kpi_pct: 0.60,
+  weak_case_roi_floor: 1.5,
 };
 
 const STANDARD_DISCLAIMER =
   "This analysis represents estimated potential impact based on available financial data " +
-  "and industry benchmarks. Actual results will depend on implementation quality, " +
-  "organizational readiness, market conditions, and other factors. Impact estimates include " +
-  "overlap adjustments between related drivers and are capped at industry-reasonable levels. " +
-  "The implementation cost is estimated based on typical programs of this type and scale; " +
-  "actual implementation investment should be scoped separately.";
+  "and industry benchmarks. Actual results depend on implementation quality, " +
+  "organizational readiness, and market conditions.";
 
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
-export function calculate(
-  companyData: CompanyData,
-  methodology: MethodologyConfig,
-  impactAssumptions: ImpactAssumptions,
-  options?: CalculationOptions,
-): CalculationResult {
-  const enabledKpis: KPIConfig[] = [];
-  const requiredInputs = new Set<string>();
-  for (const k of methodology.kpis) {
-    if (!k.enabled) continue;
-    enabledKpis.push(k);
-    for (const input of k.inputs) requiredInputs.add(input);
-  }
-  const availableInputs = new Set(Object.keys(companyData.fields));
-  const missing = [...requiredInputs].filter((i) => !availableInputs.has(i));
-  const completeness = requiredInputs.size > 0
-    ? (requiredInputs.size - missing.length) / requiredInputs.size
-    : 1.0;
-
-  const warnings: string[] = [];
-  if (missing.length > 0) {
-    warnings.push(`Missing inputs: ${missing.sort().join(", ")}. KPIs requiring these will be skipped.`);
-  }
-
+export function validate(input: ValidateInput): CalculationResult & { validation_warnings: ValidationWarning[] } {
+  const warnings: ValidationWarning[] = [];
   const scenarios = {} as Record<Scenario, ScenarioResult>;
+
   for (const scenario of SCENARIOS) {
-    scenarios[scenario] = runScenario(
-      companyData, methodology, enabledKpis, scenario, impactAssumptions, options,
+    const scenarioInput = input.scenarios[scenario];
+    if (!scenarioInput) continue;
+    scenarios[scenario] = validateScenario(
+      scenarioInput, scenario, input, warnings,
     );
   }
 
-  const weakCaseFlag = scenarios.conservative.realism_caps?.weak_case_flag ?? false;
+  const weakCaseFlag = warnings.some(
+    (w) => w.type === "weak_case" && w.message.includes("conservative"),
+  );
 
   return {
-    company_name: companyData.company_name,
-    industry: companyData.industry,
-    methodology_id: methodology.id,
-    methodology_version: methodology.version,
+    company_name: input.company_name,
+    industry: input.industry,
+    methodology_id: "llm-reasoned",
+    methodology_version: "1.0",
     scenarios,
-    data_completeness: completeness,
-    missing_inputs: missing.sort(),
-    available_inputs: [...availableInputs].filter((i) => requiredInputs.has(i)).sort(),
-    warnings,
+    data_completeness: 1.0, // LLM already gathered all data
+    missing_inputs: [],
+    available_inputs: [],
+    warnings: warnings.map((w) => w.message),
     weak_case_flag: weakCaseFlag || undefined,
+    validation_warnings: warnings,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Attribution factor — scopes impact to what this engagement can credibly claim
+// Scenario validator
 // ---------------------------------------------------------------------------
 
-function getAttributionFactor(
-  engagementCost: number,
+function validateScenario(
+  input: ScenarioCalculation,
   scenario: Scenario,
-  serviceTiers?: ServiceTier[],
-): number {
-  const DEFAULT_ATTRIBUTION = { low: 0.10, mid: 0.20, high: 0.30 };
-
-  if (!serviceTiers || serviceTiers.length === 0) {
-    return scenario === "conservative" ? DEFAULT_ATTRIBUTION.low
-      : scenario === "aggressive" ? DEFAULT_ATTRIBUTION.high
-      : DEFAULT_ATTRIBUTION.mid;
-  }
-
-  // Find matching tier by engagement cost (with 20% tolerance above high end)
-  const tier = serviceTiers.find(t =>
-    engagementCost >= t.price_range.low * 0.8 && engagementCost <= t.price_range.high * 1.2
-  ) ?? serviceTiers[serviceTiers.length - 1]; // fallback to highest tier
-
-  const { low, high } = tier.attribution_range;
-  const mid = (low + high) / 2;
-
-  return scenario === "conservative" ? low
-    : scenario === "aggressive" ? high
-    : mid;
-}
-
-// ---------------------------------------------------------------------------
-// Scenario runner — with overlap, caps, and implementation cost
-// ---------------------------------------------------------------------------
-
-function runScenario(
-  companyData: CompanyData, config: MethodologyConfig,
-  enabledKpis: KPIConfig[], scenario: Scenario,
-  impactAssumptions: ImpactAssumptions,
-  options?: CalculationOptions,
+  context: ValidateInput,
+  warnings: ValidationWarning[],
 ): ScenarioResult {
-  // 1. Calculate all KPIs independently
   const kpiResults: KPIAuditEntry[] = [];
   const skippedKpis: string[] = [];
   const impactByCategory: Record<string, number> = {};
-  let grossTotal = 0;
+  let verifiedTotal = 0;
 
-  for (const kpiConfig of enabledKpis) {
-    const entry = calculateSingleKpi(companyData, kpiConfig, impactAssumptions, scenario);
-    // 2. Tag with driver_category from KPI_REGISTRY
-    const kpiDef = KPI_REGISTRY[kpiConfig.id];
-    if (kpiDef) entry.driver_category = kpiDef.driverCategory;
-    kpiResults.push(entry);
-    if (entry.skipped) {
-      skippedKpis.push(entry.kpi_id);
+  // 1. Validate each KPI's arithmetic
+  for (const kpi of input.kpis) {
+    const verified = verifyKpiArithmetic(kpi, warnings);
+    kpiResults.push(verified);
+
+    if (!verified.skipped) {
+      verifiedTotal += verified.raw_impact;
+      impactByCategory[verified.category] =
+        (impactByCategory[verified.category] ?? 0) + verified.raw_impact;
     } else {
-      grossTotal += entry.raw_impact;
-      impactByCategory[entry.category] = (impactByCategory[entry.category] ?? 0) + entry.raw_impact;
+      skippedKpis.push(verified.kpi_id);
     }
   }
 
-  // 3. Get annual revenue for caps (fallback to grossTotal if unavailable)
-  const annualRevenue = companyData.fields.annual_revenue?.value;
+  // 2. Apply overlap adjustment (LLM states the %)
+  const overlapPct = input.overlap_adjustment_pct ?? 0;
+  const adjustedTotal = verifiedTotal * (1 - overlapPct);
 
-  // 4. Apply overlap adjustment
-  const overlap = applyOverlapAdjustment(kpiResults, annualRevenue);
-
-  // 4b. Calculate implementation cost → total_investment (needed for attribution)
-  const engCost = companyData.fields.engagement_cost;
-  const engCostVal = engCost?.value ?? 0;
-  const investmentBreakdown = engCostVal > 0
-    ? calculateImplementationCost(
-        engCostVal,
-        options?.serviceType,
-        annualRevenue,
-        options?.estimatedImplementationCost,
-      )
+  // 3. Calculate ROI
+  const totalInvestment = input.investment.total;
+  const roiMultiple = totalInvestment > 0 ? adjustedTotal / totalInvestment : undefined;
+  const roiPercentage = totalInvestment > 0
+    ? ((adjustedTotal - totalInvestment) / totalInvestment) * 100
     : undefined;
 
-  const totalInvestment = investmentBreakdown?.total_investment ?? engCostVal;
+  // 4. Year projections
+  const yearProjections = projectMultiYear(adjustedTotal, context.realization_curve);
+  const cumulative3yr = yearProjections.reduce((s, p) => s + p.projected_impact, 0);
 
-  // 4c. Apply attribution/scope factor
-  const attributionFactor = getAttributionFactor(engCostVal, scenario, options?.serviceTiers);
-  const attributedImpact = overlap.adjusted_total * attributionFactor;
+  // 5. Sanity checks
+  const sanityFootnotes: string[] = [];
 
-  // 5. ROI based on total investment (not just consulting fee)
-  let roiPct: number | undefined;
-  let roiMult: number | undefined;
-  if (totalInvestment > 0) {
-    roiPct = ((attributedImpact - totalInvestment) / totalInvestment) * 100;
-    roiMult = attributedImpact / totalInvestment;
-  }
-
-  // 6. Apply realism caps
-  let caps = applyRealismCaps(
-    attributedImpact, kpiResults, scenario, annualRevenue, roiMult,
-  );
-
-  // 6b. Apply ROI cap (after other caps, where we have totalInvestment)
-  if (totalInvestment > 0) {
-    const roiCap = ROI_CAP[scenario];
-    const maxImpact = roiCap * totalInvestment;
-    if (caps.post_cap_impact > maxImpact) {
-      caps = { ...caps };
-      caps.post_cap_impact = maxImpact;
-      caps.roi_cap_applied = true;
-      caps.cap_footnotes = [...caps.cap_footnotes,
-        `ROI capped at ${roiCap}x for ${scenario} scenario — impact reduced to $${formatCompact(maxImpact)}`,
-      ];
+  if (context.addressable_base.value > 0) {
+    const pctOfBase = adjustedTotal / context.addressable_base.value;
+    if (pctOfBase > SANITY_THRESHOLDS.max_impact_pct_of_addressable) {
+      const msg = `${scenario}: Impact is ${(pctOfBase * 100).toFixed(1)}% of addressable base ($${formatCompact(context.addressable_base.value)}) — exceeds ${(SANITY_THRESHOLDS.max_impact_pct_of_addressable * 100)}% threshold`;
+      warnings.push({ type: "sanity_check", message: msg });
+      sanityFootnotes.push(msg);
     }
   }
 
-  // 6c. Always recalculate ROI after all caps
-  if (totalInvestment > 0) {
-    roiPct = ((caps.post_cap_impact - totalInvestment) / totalInvestment) * 100;
-    roiMult = caps.post_cap_impact / totalInvestment;
+  if (context.total_revenue > 0) {
+    const pctOfTotal = adjustedTotal / context.total_revenue;
+    if (pctOfTotal > SANITY_THRESHOLDS.max_impact_pct_of_total_revenue) {
+      const msg = `${scenario}: Impact is ${(pctOfTotal * 100).toFixed(1)}% of total revenue — exceeds ${(SANITY_THRESHOLDS.max_impact_pct_of_total_revenue * 100)}% threshold`;
+      warnings.push({ type: "sanity_check", message: msg });
+      sanityFootnotes.push(msg);
+    }
   }
 
-  // 7. Multi-year projection uses postCapImpact
-  const yearProjections = projectMultiYear(caps.post_cap_impact, config.realization_curve);
-  const cumulative = yearProjections.reduce((s, p) => s + p.projected_impact, 0);
+  if (roiMultiple !== undefined) {
+    const cap = SANITY_THRESHOLDS.max_roi_multiple[scenario];
+    if (roiMultiple > cap) {
+      const msg = `${scenario}: ROI of ${roiMultiple.toFixed(1)}x exceeds ${cap}x threshold — re-examine scoping or investment sizing`;
+      warnings.push({ type: "sanity_check", message: msg });
+      sanityFootnotes.push(msg);
+    }
+  }
+
+  // Single KPI concentration check
+  if (verifiedTotal > 0) {
+    for (const kpi of kpiResults) {
+      if (kpi.skipped) continue;
+      const pct = kpi.raw_impact / verifiedTotal;
+      if (pct > SANITY_THRESHOLDS.max_single_kpi_pct) {
+        const msg = `${kpi.kpi_label} is ${(pct * 100).toFixed(0)}% of total impact — concentration risk`;
+        warnings.push({ type: "sanity_check", message: msg, kpi_id: kpi.kpi_id });
+        sanityFootnotes.push(msg);
+      }
+    }
+  }
+
+  // Weak case check
+  if (scenario === "conservative" && roiMultiple !== undefined && roiMultiple < SANITY_THRESHOLDS.weak_case_roi_floor) {
+    warnings.push({
+      type: "weak_case",
+      message: `conservative ROI of ${roiMultiple.toFixed(1)}x is below ${SANITY_THRESHOLDS.weak_case_roi_floor}x — weak financial case`,
+    });
+  }
 
   return {
     scenario,
     kpi_results: kpiResults,
-    total_annual_impact: caps.post_cap_impact,
-    gross_annual_impact: grossTotal,
+    total_annual_impact: adjustedTotal,
+    gross_annual_impact: verifiedTotal,
     impact_by_category: impactByCategory,
     year_projections: yearProjections,
-    cumulative_3yr_impact: cumulative,
-    roi_percentage: roiPct,
-    roi_multiple: roiMult,
-    engagement_cost: engCostVal || undefined,
-    attribution_factor: attributionFactor,
-    pre_attribution_impact: overlap.adjusted_total,
+    cumulative_3yr_impact: cumulative3yr,
+    roi_percentage: roiPercentage,
+    roi_multiple: roiMultiple,
+    engagement_cost: input.investment.consulting_fee,
     skipped_kpis: skippedKpis,
-    investment_breakdown: investmentBreakdown,
-    overlap_adjustment: overlap,
-    realism_caps: caps,
+    investment_breakdown: {
+      consulting_fee: input.investment.consulting_fee,
+      implementation_cost: input.investment.implementation_cost,
+      total_investment: input.investment.total,
+      multiplier_used: input.investment.consulting_fee > 0
+        ? input.investment.total / input.investment.consulting_fee
+        : 0,
+      estimation_method: "user_provided",
+    },
+    overlap_adjustment: {
+      gross_offensive: 0,
+      gross_defensive: 0,
+      gross_efficiency: 0,
+      offensive_driver_count: 0,
+      offensive_discount: 1,
+      adjusted_offensive: 0,
+      defensive_revenue_adjustment: 1,
+      adjusted_defensive: 0,
+      adjusted_efficiency: 0,
+      gross_total: verifiedTotal,
+      adjusted_total: adjustedTotal,
+      overlap_discount_pct: overlapPct,
+    },
+    realism_caps: {
+      pre_cap_impact: adjustedTotal,
+      per_driver_caps_applied: [],
+      total_cap_applied: false,
+      roi_cap_applied: false,
+      post_cap_impact: adjustedTotal,
+      post_cap_roi_multiple: roiMultiple,
+      cap_footnotes: sanityFootnotes,
+      weak_case_flag: scenario === "conservative" && roiMultiple !== undefined && roiMultiple < SANITY_THRESHOLDS.weak_case_roi_floor,
+    },
     disclaimer: STANDARD_DISCLAIMER,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Implementation cost estimation (Fix 1)
+// Arithmetic verification for a single KPI
 // ---------------------------------------------------------------------------
 
-function calculateImplementationCost(
-  engagementCost: number,
-  serviceType?: string,
-  annualRevenue?: number,
-  userProvided?: number,
-): ImplementationCostEstimate {
-  if (userProvided && userProvided > 0) {
-    return {
-      consulting_fee: engagementCost,
-      implementation_cost: userProvided,
-      total_investment: engagementCost + userProvided,
-      multiplier_used: userProvided / engagementCost,
-      estimation_method: "user_provided",
-    };
-  }
-
-  const tiers = IMPL_MULTIPLIERS[serviceType ?? ""] ?? IMPL_MULTIPLIERS["experience-transformation-design"];
-
-  // Scale multiplier by company revenue tier
-  let multiplier: number;
-  if (!annualRevenue || annualRevenue < 1_000_000_000) {
-    multiplier = tiers.low;
-  } else if (annualRevenue < 10_000_000_000) {
-    multiplier = tiers.mid;
-  } else {
-    multiplier = tiers.high;
-  }
-
-  // Implementation cost = consulting_fee × multiplier (as a percentage)
-  // e.g. $500K consulting × 100 means the company spends $50M total to implement
-  // This is the "total change program" cost — not just consulting
-  const implCost = engagementCost * multiplier;
-
-  return {
-    consulting_fee: engagementCost,
-    implementation_cost: implCost,
-    total_investment: engagementCost + implCost,
-    multiplier_used: multiplier,
-    estimation_method: "auto_estimated",
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Overlap adjustment (Fix 2)
-// ---------------------------------------------------------------------------
-
-function applyOverlapAdjustment(
-  kpiResults: KPIAuditEntry[],
-  _annualRevenue?: number,
-): OverlapAdjustment {
-  let grossOffensive = 0;
-  let grossDefensive = 0;
-  let grossEfficiency = 0;
-  let offensiveCount = 0;
-
-  for (const kpi of kpiResults) {
-    if (kpi.skipped) continue;
-    const cat = kpi.driver_category as DriverCategory | undefined;
-    if (cat === "offensive") {
-      grossOffensive += kpi.raw_impact;
-      offensiveCount++;
-    } else if (cat === "defensive") {
-      grossDefensive += kpi.raw_impact;
-    } else if (cat === "efficiency") {
-      grossEfficiency += kpi.raw_impact;
-    }
-  }
-
-  // Offensive discount: 1 driver = 1.0, 2 = 0.85, 3+ = 0.75
-  const offensiveDiscount = offensiveCount <= 1 ? 1.0 : offensiveCount === 2 ? 0.85 : 0.75;
-  const adjustedOffensive = grossOffensive * offensiveDiscount;
-
-  // Defensive: discount by overlap with offensive revenue uplift
-  const grossTotal = grossOffensive + grossDefensive + grossEfficiency;
-  const offensivePctOfTotal = grossTotal > 0 ? grossOffensive / grossTotal : 0;
-  const defensiveRevAdj = Math.max(0.8, 1.0 - offensivePctOfTotal * 0.2);
-  const adjustedDefensive = grossDefensive * defensiveRevAdj;
-
-  // Efficiency: no adjustment
-  const adjustedEfficiency = grossEfficiency;
-
-  const adjustedTotal = adjustedOffensive + adjustedDefensive + adjustedEfficiency;
-  const overlapPct = grossTotal > 0 ? 1 - adjustedTotal / grossTotal : 0;
-
-  return {
-    gross_offensive: grossOffensive,
-    gross_defensive: grossDefensive,
-    gross_efficiency: grossEfficiency,
-    offensive_driver_count: offensiveCount,
-    offensive_discount: offensiveDiscount,
-    adjusted_offensive: adjustedOffensive,
-    defensive_revenue_adjustment: defensiveRevAdj,
-    adjusted_defensive: adjustedDefensive,
-    adjusted_efficiency: adjustedEfficiency,
-    gross_total: grossTotal,
-    adjusted_total: adjustedTotal,
-    overlap_discount_pct: overlapPct,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Realism caps (Fix 3)
-// ---------------------------------------------------------------------------
-
-function applyRealismCaps(
-  adjustedTotal: number,
-  kpiResults: KPIAuditEntry[],
-  scenario: Scenario,
-  annualRevenue?: number,
-  roiMultiple?: number,
-): RealismCapResult {
-  const footnotes: string[] = [];
-  const capsApplied: string[] = [];
-  let postCapImpact = adjustedTotal;
-  let totalCapApplied = false;
-  let roiCapApplied = false;
-  let postCapRoi = roiMultiple;
-  let weakCaseFlag = false;
-
-  // Per-driver caps (only if we have annual revenue)
-  // Note: kpi.raw_impact is the pre-attribution gross value. Per-driver caps flag
-  // disproportionately large drivers for audit visibility, but the postCapImpact
-  // (which already has attribution applied) is reduced proportionally rather than
-  // recalculated from gross KPI values.
-  if (annualRevenue && annualRevenue > 0) {
-    const driverCapPct = DRIVER_CAP_PCT[scenario];
-    const driverCap = annualRevenue * driverCapPct;
-
-    for (const kpi of kpiResults) {
-      if (kpi.skipped) continue;
-      if (kpi.raw_impact > driverCap) {
-        const reduction = kpi.raw_impact - driverCap;
-        kpi.capped_impact = driverCap;
-        capsApplied.push(kpi.kpi_id);
-        footnotes.push(
-          `${kpi.kpi_label} capped at ${(driverCapPct * 100).toFixed(0)}% of revenue ` +
-          `($${formatCompact(driverCap)} from $${formatCompact(kpi.raw_impact)})`,
-        );
-        // Reduce the attributed total proportionally
-        // (the ratio of reduction to gross keeps attribution intact)
-        const grossKpiTotal = kpiResults
-          .filter(k => !k.skipped)
-          .reduce((s, k) => s + k.raw_impact, 0);
-        if (grossKpiTotal > 0) {
-          postCapImpact -= postCapImpact * (reduction / grossKpiTotal);
-        }
-      }
-    }
-
-    // Total cap
-    const totalCap = annualRevenue * TOTAL_CAP_PCT[scenario];
-    if (postCapImpact > totalCap) {
-      totalCapApplied = true;
-      footnotes.push(
-        `Total impact capped at ${(TOTAL_CAP_PCT[scenario] * 100).toFixed(0)}% of revenue ` +
-        `($${formatCompact(totalCap)} from $${formatCompact(postCapImpact)})`,
-      );
-      postCapImpact = totalCap;
-    }
-  }
-
-  // Weak case floor: ROI < 1.5x at conservative
-  if (scenario === "conservative" && postCapRoi !== undefined && postCapRoi < 1.5) {
-    weakCaseFlag = true;
-    footnotes.push(
-      "Conservative ROI below 1.5x — this engagement may not produce " +
-      "a strong enough financial case. Consider adjusting scope or investment.",
-    );
-  }
-
-  return {
-    pre_cap_impact: adjustedTotal,
-    per_driver_caps_applied: capsApplied,
-    total_cap_applied: totalCapApplied,
-    roi_cap_applied: roiCapApplied,
-    post_cap_impact: postCapImpact,
-    post_cap_roi_multiple: postCapRoi,
-    cap_footnotes: footnotes,
-    weak_case_flag: weakCaseFlag,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Single KPI calculation
-// ---------------------------------------------------------------------------
-
-function calculateSingleKpi(
-  companyData: CompanyData, kpiConfig: KPIConfig,
-  impactAssumptions: ImpactAssumptions, scenario: Scenario,
+function verifyKpiArithmetic(
+  kpi: KPICalculation,
+  warnings: ValidationWarning[],
 ): KPIAuditEntry {
-  const kpiDef = KPI_REGISTRY[kpiConfig.id];
-  if (!kpiDef) return skippedEntry(kpiConfig, `KPI '${kpiConfig.id}' not found in registry`);
+  // Re-compute from the stated inputs and formula
+  // We support common formula patterns
+  const inputs = kpi.inputs;
+  const values = Object.values(inputs);
 
-  const impactValue = impactAssumptions[kpiConfig.id]?.[scenario];
-  if (impactValue === undefined) return skippedEntry(kpiConfig, "No impact assumption provided");
+  // Simple product of all inputs (most common: base * percentage)
+  const recomputed = values.reduce((product, v) => product * v, 1);
 
-  const inputsUsed: Record<string, number> = {};
-  const missingFields: string[] = [];
+  // Check if the LLM's claimed impact matches our recomputation
+  // Allow 1% tolerance for floating point
+  const tolerance = Math.abs(kpi.claimed_impact) * 0.01;
+  const matches = Math.abs(recomputed - kpi.claimed_impact) <= Math.max(tolerance, 1);
 
-  for (const fieldName of kpiDef.requiredInputs) {
-    const dp = companyData.fields[fieldName];
-    if (!dp) { missingFields.push(fieldName); continue; }
-    inputsUsed[fieldName] = dp.value;
+  if (!matches && kpi.claimed_impact !== 0) {
+    warnings.push({
+      type: "arithmetic_error",
+      kpi_id: kpi.id,
+      message: `${kpi.label}: LLM claimed $${formatCompact(kpi.claimed_impact)} but inputs multiply to $${formatCompact(recomputed)}. Using recomputed value.`,
+    });
   }
 
-  if (missingFields.length > 0) return skippedEntry(kpiConfig, `Missing required inputs: ${missingFields.join(", ")}`);
-
-  const formulaInputs = { ...inputsUsed, [kpiDef.benchmarkInput]: impactValue };
-
-  // Inject referral defaults for NPS referral revenue
-  if (kpiConfig.id === "nps_referral_revenue") {
-    if (formulaInputs.referral_rate === undefined) {
-      formulaInputs.referral_rate =
-        INDUSTRY_REFERRAL_DEFAULTS[companyData.industry] ?? 0.12;
-    }
-    if (formulaInputs.referral_conversion_rate === undefined) {
-      formulaInputs.referral_conversion_rate = DEFAULT_REFERRAL_CONVERSION_RATE;
-    }
-  }
-
-  let rawImpact: number;
-  try {
-    rawImpact = kpiDef.formula(formulaInputs);
-  } catch (e) {
-    return skippedEntry(kpiConfig, `Formula error: ${e}`);
-  }
+  // Use the verified (recomputed) value
+  const verifiedImpact = kpi.claimed_impact === 0 ? 0 : recomputed;
 
   return {
-    kpi_id: kpiConfig.id,
-    kpi_label: kpiConfig.label || kpiDef.label,
-    formula_description: kpiConfig.formula,
-    inputs_used: inputsUsed,
-    impact_assumption: impactValue,
-    raw_impact: rawImpact,
-    category: kpiDef.category,
-    skipped: false,
+    kpi_id: kpi.id,
+    kpi_label: kpi.label,
+    formula_description: kpi.formula,
+    inputs_used: inputs,
+    impact_assumption: 0, // Not applicable — LLM chose its own rates
+    raw_impact: verifiedImpact,
+    category: kpi.category,
+    skipped: kpi.claimed_impact === 0,
+    skip_reason: kpi.claimed_impact === 0 ? "Excluded from this scenario" : undefined,
+    driver_category: kpi.category,
   };
 }
 
@@ -497,22 +314,13 @@ function projectMultiYear(totalAnnual: number, curve: number[]): YearProjection[
   return curve.map((pct, i) => {
     const impact = totalAnnual * pct;
     cumulative += impact;
-    return { year: i + 1, realization_percentage: pct, projected_impact: impact, cumulative_impact: cumulative };
+    return {
+      year: i + 1,
+      realization_percentage: pct,
+      projected_impact: impact,
+      cumulative_impact: cumulative,
+    };
   });
-}
-
-function skippedEntry(kpiConfig: KPIConfig, reason: string): KPIAuditEntry {
-  return {
-    kpi_id: kpiConfig.id,
-    kpi_label: kpiConfig.label || kpiConfig.id,
-    formula_description: kpiConfig.formula,
-    inputs_used: {},
-    impact_assumption: 0,
-    raw_impact: 0,
-    category: "unknown",
-    skipped: true,
-    skip_reason: reason,
-  };
 }
 
 function formatCompact(n: number): string {

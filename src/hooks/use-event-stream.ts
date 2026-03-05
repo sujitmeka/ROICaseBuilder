@@ -36,6 +36,23 @@ interface PipelineData {
   message?: string;
 }
 
+export interface AssumptionsData {
+  addressable_base: {
+    value: number;
+    label: string;
+    reasoning: string;
+    confidence: string;
+  };
+  scoping_logic: string;
+  key_assumptions: Array<{
+    assumption: string;
+    source: string;
+    impact_if_wrong: string;
+  }>;
+  overlap_note: string;
+  investment_sizing: string;
+}
+
 // ---------------------------------------------------------------------------
 // usePipelineStream — wraps useChat from @ai-sdk/react
 // ---------------------------------------------------------------------------
@@ -144,7 +161,7 @@ export function usePipelineStream(caseId: string | null) {
         });
       }
 
-      // ---- data-result part (CalculationResult from run_calculation) ----
+      // ---- data-result part (CalculationResult from validate_calculation) ----
       if (dataPart.type === "data-result") {
         const d = dataPart.data as CalculationResult;
         if (d && typeof d === "object" && "scenarios" in d) {
@@ -157,6 +174,14 @@ export function usePipelineStream(caseId: string | null) {
         const d = dataPart.data as { topic: string; summary: string };
         if (d && d.topic && d.summary) {
           useCaseStore.getState().setHypothesis(d);
+        }
+      }
+
+      // ---- data-assumptions part ----
+      if (dataPart.type === "data-assumptions") {
+        const d = dataPart.data as AssumptionsData;
+        if (d && d.addressable_base) {
+          useCaseStore.getState().setAssumptions(d);
         }
       }
     },

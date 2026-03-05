@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { AssumptionsData } from "../hooks/use-event-stream";
 
 export type Scenario = "conservative" | "moderate" | "aggressive";
 
@@ -96,6 +97,7 @@ interface CaseStore {
   activeScenario: Scenario;
   auditEntries: AuditEntry[];
   hypothesis: { topic: string; summary: string } | null;
+  assumptions: AssumptionsData | null;
   setCaseInfo: (info: {
     caseId: string;
     companyName: string;
@@ -107,6 +109,7 @@ interface CaseStore {
   setActiveScenario: (scenario: Scenario) => void;
   setAuditEntries: (entries: AuditEntry[]) => void;
   setHypothesis: (h: { topic: string; summary: string }) => void;
+  setAssumptions: (a: AssumptionsData) => void;
   reset: () => void;
 }
 
@@ -120,6 +123,7 @@ export const useCaseStore = create<CaseStore>((set) => ({
   activeScenario: "moderate",
   auditEntries: [],
   hypothesis: null,
+  assumptions: null,
 
   setCaseInfo: (info) => set(info),
   setResult: (result) => set({ calculationResult: result }),
@@ -127,6 +131,7 @@ export const useCaseStore = create<CaseStore>((set) => ({
   setActiveScenario: (scenario) => set({ activeScenario: scenario }),
   setAuditEntries: (entries) => set({ auditEntries: entries }),
   setHypothesis: (h) => set({ hypothesis: h }),
+  setAssumptions: (a) => set({ assumptions: a }),
   reset: () =>
     set({
       caseId: null,
@@ -138,5 +143,6 @@ export const useCaseStore = create<CaseStore>((set) => ({
       activeScenario: "moderate",
       auditEntries: [],
       hypothesis: null,
+      assumptions: null,
     }),
 }));

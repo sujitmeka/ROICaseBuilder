@@ -16,7 +16,7 @@ const TOOL_LABELS: Record<string, string> = {
   scrape: "Scraping webpage",
   extract: "Extracting data",
   firecrawl_search: "Searching web (Firecrawl)",
-  run_calculation: "Running ROI calculations",
+  validate_calculation: "Validating ROI calculations",
   web_search: "Searching the web",
 };
 
@@ -101,7 +101,7 @@ function ToolOutputSummary({
     );
   }
 
-  if (toolName === "run_calculation") {
+  if (toolName === "validate_calculation") {
     const scenarios = data.scenarios as Record<string, { total_annual_impact?: number; kpi_results?: unknown[] }> | undefined;
     const moderate = scenarios?.moderate;
     if (moderate?.total_annual_impact) {

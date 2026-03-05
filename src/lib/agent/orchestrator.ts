@@ -13,6 +13,7 @@ import { companyResearch } from "@valyu/ai-sdk";
 import { financialData } from "./valyu-tools";
 import { scrapeTool, extractTool, searchTool } from "firecrawl-aisdk";
 import { tools } from "./tools";
+import { discoverSkills, buildSkillsPrompt, createLoadSkillTool } from "./skills";
 
 // ---------------------------------------------------------------------------
 // Custom data part types (must match frontend expectations)
@@ -45,13 +46,14 @@ export interface PipelineDataPart {
 
 const TOOL_STEP_MAP: Record<string, string> = {
   load_methodology: "classify",
+  load_skill: "classify",
   financial_data: "financials",
   company_research: "financials",
   scrape: "financials",
   extract: "financials",
   firecrawl_search: "financials",
   web_search: "benchmarks",
-  run_calculation: "calculate",
+  validate_calculation: "calculate",
 };
 
 // ---------------------------------------------------------------------------
@@ -91,10 +93,12 @@ function summarizeToolCall(
       return `Extracting data from ${(args.url as string)?.slice(0, 50) ?? "webpage"}`;
     case "firecrawl_search":
       return `Searching web: ${(args.query as string)?.slice(0, 60) ?? "query"}`;
-    case "run_calculation":
-      return "Running ROI calculation engine";
+    case "validate_calculation":
+      return "Validating ROI calculations";
     case "load_methodology":
       return `Loading methodology for ${(args.service_type as string) ?? "service"}`;
+    case "load_skill":
+      return `Loading ${(args.name as string) ?? "service"} skill`;
     case "web_search":
       return "Searching the web";
     default:
@@ -106,7 +110,7 @@ function summarizeToolCall(
 // System Prompt
 // ---------------------------------------------------------------------------
 
-function getSystemPrompt(companyType: "public" | "private"): string {
+function getSystemPrompt(companyType: "public" | "private", skillsPrompt: string): string {
   const today = new Date().toISOString().split("T")[0];
   const year = new Date().getFullYear();
 
@@ -163,37 +167,64 @@ Prefer ${year} or ${year - 1} data. Do not cite older data unless nothing recent
 | Tool | Purpose |
 |------|---------|
 | load_methodology | **Call first.** Returns KPI definitions, typical ranges, reasoning guidance, realization curve. |
+| load_skill | **Call after Step 1.** Loads service-specific reasoning guidance (scoping logic, sector lenses, maturity signals). |
 | financial_data | Valyu: SEC filings, earnings, balance sheets, income statements, cash flow, statistics. Date-filtered (last 18 months). |
 | company_research | Valyu: broad company intelligence (expensive — use sparingly). |
 | scrape | Firecrawl: scrape a URL to markdown. |
 | extract | Firecrawl: extract structured data from a URL. |
 | firecrawl_search | Firecrawl: web search. |
 | web_search | Industry benchmarks, analyst reports, CX research. |
-| run_calculation | Deterministic engine: takes company_data + impact_assumptions → 3 scenarios. |
+| validate_calculation | Arithmetic validator: re-checks YOUR calculations, runs sanity checks, produces audit trail. |
 
 ${dataStrategy}
 
+${skillsPrompt}
+
+## Financial Modeling Framework
+
+**Core principle:** Scope the addressable base first, then estimate improvement on
+that scoped base. NEVER apply improvement percentages to total company revenue and
+"correct" with attribution factors afterward.
+
+**Wrong approach:** "Nike has $46B revenue, 10% conversion lift = $4.6B, multiply
+by 12% attribution = $552M." This is backwards math — inflating then deflating.
+The result is an artifact of the correction factor, not analysis.
+
+**Right approach:** "This engagement targets Nike.com's checkout flow, which handles
+~$5.2B/yr. A 10% conversion lift on that specific flow = $520M." The number is
+grounded because the base was scoped to what the engagement actually touches.
+
 ## Process
 
-### Step 1: Load methodology (research guide)
-Call load_methodology. The methodology is a research guide, not a formula:
-- **KPI definitions** tell you what metrics to evaluate and what company data inputs to gather
-- **typical_range** gives you context for what impact percentages are common across companies (NOT a fixed formula — you'll determine the actual values)
-- **reasoning_guidance** explains how to assess each KPI for this specific company
-- **reference_sources** suggest where to find supporting data
-- **value_creation_framework** (if present) describes the enterprise-level indicators
-  this service impacts and how they map to KPIs. Use this as your mental model for
-  how this service creates value — it shapes what data to gather and how to frame
-  the narrative.
-- **sector_lens** (if present) provides industry-specific revenue levers, margin
-  drivers, and operational context. When you know the company's industry, find the
-  matching sector lens and let it sharpen your reasoning about which KPIs matter
-  most and what benchmarks to use.
-- **service_tiers** (if present) maps engagement cost to typical service tiers.
-  Use this to frame the narrative appropriately — a diagnostic engagement needs
-  different justification than an enterprise-wide redesign.
+### Step 1: Understand the engagement & load methodology
+Call load_methodology first. Then reason about:
 
-### Step 2: Gather company financials
+**What the methodology tells you:**
+- **KPI definitions** — what metrics to evaluate and what company data inputs to gather
+- **typical_range** — context for common impact percentages (NOT a formula — you determine actual values)
+- **reasoning_guidance** — how to assess each KPI for this specific company
+- **value_creation_framework** (if present) — enterprise-level indicators this service
+  impacts and how they map to KPIs. This is your mental model for how the service creates value.
+- **sector_lens** (if present) — industry-specific revenue levers, margin drivers, and
+  operational context. Find the matching lens and let it sharpen which KPIs matter most.
+- **service_tiers** (if present) — maps engagement cost to service tiers with scope expectations.
+
+**What you must reason about:**
+- What specific business processes, customer journeys, or operational flows will this
+  engagement actually change? A diagnostic (CORE) touches 1 journey. An enterprise
+  redesign touches the full lifecycle.
+- What tier does this engagement's cost map to? This determines how much of the
+  business you can realistically claim to affect.
+- What does this company's industry tell you about where value is created?
+
+Write 2-3 sentences about what this engagement will specifically change before proceeding.
+
+**Then load the service skill:** If a service-specific skill is available (listed in
+the Available Service Skills section), call load_skill with the matching name. This
+gives you detailed reasoning guidance for scoping, maturity assessment, and narrative
+framing specific to this service type.
+
+### Step 2: Source company data
 Follow the data strategy above. Your goal: populate every input field the methodology
 requires. For each value found, record:
 - The exact number
@@ -201,62 +232,71 @@ requires. For each value found, record:
 - How recent it is
 - Whether it's company-reported or estimated
 
-### Step 3: Assess digital experience maturity
-Before running calculations, reason about where this company sits relative to
-peers in their industry. This assessment determines how you'll frame the results.
+**Critical for Step 3:** Also look for SEGMENT and CHANNEL revenue breakdowns.
+You need to know how much revenue flows through specific business functions:
+- Digital vs. physical revenue split
+- Revenue by channel (web, mobile app, in-store, wholesale)
+- Revenue by segment or geography (if relevant to scoping)
+These numbers are often in 10-K segment disclosures or earnings call commentary.
+
+### Step 3: Scope the addressable base (CRITICAL — this determines everything)
+**This is the most important step. Do NOT skip it.**
+
+Ask: "What specific slice of the business does this engagement actually touch?"
+
+The addressable base is NOT total company revenue. It is the revenue (or cost base)
+flowing through the specific journeys, channels, or processes being redesigned.
+
+**How to scope by service type:**
+| Service Type | Addressable Base = |
+|---|---|
+| Experience Transformation | Revenue through the specific journey(s) being redesigned (e.g., checkout flow, onboarding funnel, mobile app purchase path) |
+| Org Redesign | Headcount cost + productivity output of the functions being restructured |
+| New Product Development | TAM slice for the specific market segment being targeted |
+| Digital Transformation | Revenue/cost flowing through the systems being replaced |
+
+**How to scope by engagement tier:**
+| Tier | Typical Scope |
+|---|---|
+| CORE ($150-200K) | 1 priority journey. Addressable base = revenue through that ONE journey. |
+| EXPANDED ($275-350K) | 2-3 priority journeys. Addressable base = combined revenue through those journeys. |
+| ENTERPRISE ($400-500K+) | Full customer lifecycle or multiple business units. Broader base, but still not total revenue unless engagement truly spans everything. |
+
+**Example — Nike Experience Transformation (CORE tier, $200K):**
+- Nike total revenue: $46B
+- Nike.com direct revenue: ~$13B
+- CORE engagement focuses on mobile checkout experience
+- Mobile checkout handles ~40% of digital orders: ~$5.2B
+- **Addressable base: $5.2B** (not $46B, not $13B)
+
+Document your scoping logic explicitly — this is the single most important assumption
+in the entire model.
+
+### Step 4: Assess maturity & estimate improvement
+**Maturity assessment:** Reason about where this company sits relative to peers.
 
 Consider:
-- **Current digital experience quality** — Is their website/app well-designed or
-  dated? Any known UX issues, redesigns in progress, or industry awards?
-- **Digital revenue dependency** — What share of revenue flows through digital
-  channels? Higher digital mix = larger base for CX improvements.
-- **Competitive positioning** — Are they a digital leader (less room for
-  improvement) or lagging competitors (more upside)?
-- **Recent investments** — Have they recently invested in CX/UX, or is this
-  greenfield? Post-investment gains are typically smaller.
-- **Industry context** — Where does this industry sit on digital maturity?
-  (e.g., ecommerce is mature, insurance is still digitizing)
-- **Enterprise indicators** — If the methodology includes a value_creation_framework,
-  review it to understand which enterprise-level indicators are most relevant for
-  this company. Which indicators represent the biggest opportunity or risk?
-- **Sector-specific context** — If the methodology includes a sector_lens matching
-  this company's industry, use it to focus your assessment on the most relevant
-  levers. For example, a retail assessment should emphasize purchase frequency and
-  AOV, while travel/hospitality should focus on repeat bookings and brand promise
-  delivery.
+- **Current digital experience quality** — well-designed or dated? Known UX issues?
+- **Digital revenue dependency** — what share flows through digital channels?
+- **Competitive positioning** — digital leader (less room) or lagging (more upside)?
+- **Recent investments** — recent CX/UX spend means smaller incremental gains
+- **Enterprise indicators** — if value_creation_framework exists, which indicators
+  represent the biggest opportunity?
+- **Sector context** — if sector_lens exists, use it to focus on the most relevant levers
 
-Use web_search to find specific signals: app store ratings, J.D. Power scores,
-Forrester CX Index rankings, recent UX-related press coverage, or analyst
-commentary on their digital strategy.
+Use web_search for signals: app store ratings, J.D. Power scores, Forrester CX Index,
+recent press coverage, analyst commentary on digital strategy.
 
-Write a brief internal assessment (2-3 sentences) before proceeding. This shapes
-your narrative later.
+**Impact assumptions:** For each KPI, determine what improvement is realistic for THIS
+company, applied to the SCOPED addressable base from Step 3.
 
-### Step 4: Determine impact assumptions (CRITICAL — scenarios must differ in SCOPE, not just percentages)
-For each enabled KPI in the methodology, reason about what impact percentage
-is realistic for THIS company across all three scenarios.
-
-**Scenario differentiation is essential.** The three scenarios MUST differ in which
-drivers are included, not just in percentage values:
-
-- **CONSERVATIVE:** Include ONLY the top 2 highest-confidence drivers where you have
-  strong company-specific data. Exclude KPIs where >50% of inputs are estimated/benchmarked.
-  Use the lower end of typical_range. Set impact to 0 for excluded KPIs (they'll appear
-  as skipped in the audit trail).
-- **MODERATE:** Include all medium+ confidence drivers. Benchmarks are acceptable for
-  up to 2 inputs per KPI. Use midpoint of typical_range.
-- **AGGRESSIVE:** Include ALL drivers including one optional "upside driver" that's
-  plausible but less certain. Use upper ranges of typical_range.
-
-For each KPI:
-1. Review the typical_range from the methodology (this is context, not a formula)
-2. Consider your maturity assessment from Step 3
-3. Consider the company's specific situation, competitive position, and digital readiness
-4. Determine three impact values following the scope rules above
-
-Your impact assumptions should reflect this specific company's situation. A digital
-leader may have less room for improvement (lower percentages). A company with dated
-digital experiences has more upside (higher percentages).
+**Scenario differentiation — scenarios must differ in SCOPE, not just percentages:**
+- **CONSERVATIVE:** Top 2 highest-confidence drivers only. Exclude KPIs where >50% of
+  inputs are estimated. Use lower end of typical_range. Set impact to 0 for excluded KPIs.
+- **MODERATE:** All medium+ confidence drivers. Benchmarks acceptable for up to 2 inputs.
+  Use midpoint of typical_range.
+- **AGGRESSIVE:** ALL drivers including one "upside driver" that's plausible but less
+  certain. Use upper end of typical_range.
 
 Produce a structured impact_assumptions object:
 \`\`\`json
@@ -266,107 +306,138 @@ Produce a structured impact_assumptions object:
   "nps_referral_revenue": { "conservative": 0, "moderate": 0, "aggressive": 3 }
 }
 \`\`\`
-Note: setting conservative/moderate to 0 for low-confidence KPIs is correct and expected.
-Explain your reasoning briefly for each KPI before moving to Step 5.
+Setting conservative/moderate to 0 for low-confidence KPIs is correct and expected.
+Explain your reasoning briefly for each KPI.
 
 ### Step 5: Fill data gaps with benchmarks
 For each missing input field, search for real industry benchmark data.
 - Use specific queries: "[industry] average conversion rate ${year} Baymard Institute"
 - Prefer authoritative sources: Baymard, McKinsey, Forrester, Statista, Gartner
 - Note the source URL and publication date for every benchmark used
-- Set confidence_tier to "industry_benchmark" (or "cross_industry" if the source
-  is from a different vertical)
+- Set confidence_tier to "industry_benchmark" (or "cross_industry" if different vertical)
 
-### Step 6: Run calculation
-Compile company data and your impact assumptions, then call run_calculation:
+### Step 6: Document assumptions
+**Before running the calculation, output a structured assumptions record.** This is
+displayed to the Client Partner so they can see and defend every critical assumption.
+
+Output this exact JSON structure in your response:
+\`\`\`json
+{"assumptions":{"addressable_base":{"value":5200000000,"label":"Mobile checkout revenue (scoped from $13B digital)","reasoning":"CORE engagement targets mobile checkout flow. Mobile handles ~40% of Nike.com orders based on industry mobile commerce benchmarks.","confidence":"estimated"},"scoping_logic":"Engagement tier is CORE ($200K, 8-10 weeks), which targets 1 priority journey. We scoped to mobile checkout as the highest-impact journey based on [specific reasoning].","key_assumptions":[{"assumption":"Mobile checkout handles 40% of digital orders","source":"Industry benchmark — Statista mobile commerce share 2025","impact_if_wrong":"Addressable base could range from $3.9B to $6.5B (30-50%)"},{"assumption":"Conversion rate improvement of 6% is achievable","source":"Baymard Institute checkout optimization benchmarks","impact_if_wrong":"Moderate scenario impact shifts by +/- $150M annually"}],"overlap_note":"Conversion rate lift and AOV increase both stem from checkout redesign — not fully additive. Engine applies overlap discount.","investment_sizing":"Total investment estimated at $2.5M: $200K consulting + $2.3M implementation (12 engineers × 50% × $180K loaded × 6 months = $648K engineering; $800K platform changes; $500K QA/testing; $350K change management/training)."}}
+\`\`\`
+
+Every field matters:
+- **addressable_base**: The scoped revenue/cost base with reasoning for why this slice
+- **scoping_logic**: Why this scope for this tier and engagement
+- **key_assumptions**: 2-4 critical assumptions with source and what happens if wrong
+- **overlap_note**: Which KPIs share underlying drivers
+- **investment_sizing**: How total investment was estimated beyond consulting fee
+
+### Step 7: Calculate and validate
+**Do the math yourself first.** For each KPI in each scenario, calculate:
+\`impact = input_1 * input_2 * ... * improvement_rate\`
+
+Then call validate_calculation with YOUR calculations. The validator will:
+- Re-check your arithmetic and flag any errors
+- Produce year-over-year projections using the realization curve
+- Run sanity checks (impact vs addressable base, ROI thresholds, concentration risk)
+- Generate a structured audit trail for the frontend
+
 \`\`\`json
 {
-  "company_data": {
-    "company_name": "...",
-    "industry": "...",
-    "fields": {
-      "field_name": {
-        "value": 123,
-        "confidence_tier": "company_reported",
-        "confidence_score": 0.95
+  "company_name": "Nike",
+  "industry": "retail",
+  "addressable_base": { "value": 5200000000, "label": "Mobile checkout revenue" },
+  "total_revenue": 46000000000,
+  "realization_curve": [0.4, 0.7, 0.9],
+  "scenarios": {
+    "conservative": {
+      "kpis": [
+        {
+          "id": "conversion_rate_lift",
+          "label": "Conversion Rate Improvement",
+          "category": "offensive",
+          "inputs": { "addressable_revenue": 5200000000, "lift_pct": 0.05 },
+          "formula": "addressable_revenue * lift_pct",
+          "claimed_impact": 260000000
+        }
+      ],
+      "overlap_adjustment_pct": 0.10,
+      "investment": {
+        "consulting_fee": 200000,
+        "implementation_cost": 2300000,
+        "total": 2500000
       }
-    }
-  },
-  "service_type": "experience-transformation-design",
-  "impact_assumptions": {
-    "conversion_rate_lift": { "conservative": 0.05, "moderate": 0.12, "aggressive": 0.20 }
+    },
+    "moderate": { ... },
+    "aggressive": { ... }
   }
 }
 \`\`\`
 
-After results return, sanity-check:
-- Is total impact reasonable relative to revenue? (>50% of revenue is suspect)
-- Are any KPIs skipped? Can you find the missing data?
-- Do the three scenarios form a sensible range?
+**Key rules:**
+- Use the SCOPED addressable base from Step 3 as your input values, not total revenue
+- Set \`claimed_impact\` to 0 for KPIs excluded from a scenario (they appear as skipped)
+- Set \`overlap_adjustment_pct\` when multiple offensive KPIs share the same underlying
+  improvement (e.g., conversion lift and AOV from the same checkout redesign)
+- Size the FULL investment realistically. The consulting fee is just the advisory cost.
+  Reason about what implementation actually costs for THIS company at THIS scale:
+  internal team allocation (headcount × % time × loaded cost × duration), technology/
+  engineering costs, change management, training. For a Fortune 500, this is often
+  millions — reason from the company's reality, not from a multiplier on the consulting fee.
 
-### Step 6b: Formulate hypothesis summary
-Before writing the narrative, produce a structured hypothesis summary that will be displayed prominently in the results. Output this exact JSON structure in your response:
+**After validation returns:** Check the \`validation_warnings\` array. If any sanity
+checks failed, go back to Step 3 and re-examine your addressable base. The most
+common cause of absurd outputs is an insufficiently scoped base.
 
+### Step 9: Formulate hypothesis & write narrative
+**Hypothesis summary** — Output this JSON structure (displayed prominently in results):
 \`\`\`json
 {"hypothesis":{"topic":"One sentence describing the specific area of experience transformation analyzed for THIS company","summary":"2-3 sentences summarizing the core hypothesis. What experience gaps or opportunities did you identify? What is the primary mechanism through which improvement drives financial impact? Reference specific data points you found."}}
 \`\`\`
 
-The topic must be specific to THIS company — not generic. The summary should reference actual data points and financial figures you gathered.
-
-### Step 7: Write the analysis narrative
-Write 4-6 paragraphs for the Client Partner. This is the most important output —
-the CP will read this to understand and defend the numbers in client conversations.
+**Analysis narrative** — Write 4-6 paragraphs for the Client Partner.
 
 **Language rules (CRITICAL):**
 - Use "has potential to unlock" instead of "could realize"
-- Use "Return on Total Investment (ROTI)" instead of "ROI" — explain that ROTI
-  includes both consulting fees and estimated implementation costs
+- Use "Return on Total Investment (ROTI)" instead of "ROI" — ROTI includes both
+  consulting fees and estimated implementation costs
 - Use "3-Year Cumulative Value (risk-adjusted)" instead of "3-Year Cumulative"
-- When referencing the investment, show the breakdown: "(consulting fee + implementation cost)"
-- If the engine flagged overlap adjustments, explain briefly: "Gross impact of $X was
-  adjusted to $Y to account for overlap between related drivers"
+- Show investment breakdown: "(consulting fee + implementation cost)"
+- If overlap adjustments applied, explain briefly
 - Note which KPIs are included in conservative vs. aggressive and why
 
-Structure your narrative as follows:
+**Narrative structure:**
 
-**Company context** (1 paragraph) — Summarize the company's financial position and
-digital experience maturity. Reference your Step 3 assessment. Establish why this
-company is a good candidate (or faces specific challenges) for CX investment.
+**Company context** (1 paragraph) — Financial position and digital maturity.
+Reference your Step 4 maturity assessment. Why is this company a good candidate?
 
-**Value creation framing** (1 paragraph) — If the methodology includes a
-value_creation_framework, use it to frame WHY this service drives value for this
-specific company. Reference the enterprise-level indicators that are most relevant.
-If sector_lens guidance exists for this industry, use the transformation_note to
-frame how transformation works differently in this sector. If execution_discipline
-indicators are relevant, mention them qualitatively (e.g., "Beyond the financial
-impact, this engagement would also improve cross-functional alignment on priority
-customer journeys").
+**Addressable scope** (1 paragraph) — Explain what specific journey/channel/process
+you scoped to and WHY. Reference the engagement tier and what it covers. This is
+new and critical — the CP needs to explain to the client exactly what slice of the
+business the ROI case covers. Example: "This analysis focuses on the mobile checkout
+experience, which handles approximately $5.2B in annual revenue — roughly 40% of
+Nike's $13B digital business."
 
-**Data foundation** (1 paragraph) — What company-specific data did you find, from
-where? What's estimated vs. reported? This builds the CP's confidence in the inputs.
+**Value creation framing** (1 paragraph) — If value_creation_framework exists, frame
+WHY this service drives value. Reference enterprise-level indicators. If sector_lens
+exists, use transformation_note. Mention execution_discipline indicators qualitatively.
 
-**Key impact drivers** (1-2 paragraphs) — Walk through the 2-3 largest KPIs.
-For each, explain: what company-specific data went in, what impact assumption you used,
-and why that impact level is reasonable for THIS company given their maturity
-assessment. Note which drivers are in the conservative scenario and which only
-appear in moderate/aggressive.
+**Key impact drivers** (1-2 paragraphs) — Walk through 2-3 largest KPIs. For each:
+what data went in, what improvement you assumed, why it's reasonable for THIS company.
+Note which drivers appear in conservative vs. only in aggressive.
 
-**Scenario recommendation** (1 paragraph) — Based on your maturity assessment,
-which scenario (conservative/moderate/aggressive) is the most defensible starting
-point for client conversations? Explain why. The CP needs to know which number to
-lead with and how to justify it.
-If service_tiers data is available in the methodology, note which tier the proposed
-engagement cost maps to and how the ROI justification aligns with that tier's
-value proposition.
+**Scenario recommendation** (1 paragraph) — Which scenario is most defensible for
+client conversations? Why? Which number should the CP lead with?
+If service_tiers data exists, note tier alignment and value proposition.
 
-**Caveats** (1 paragraph) — Data gaps, lower-confidence estimates, and anything
-the CP should caveat when presenting. Be specific: "We estimated order volume
-from revenue and industry-average AOV because Nike doesn't disclose this metric"
-is useful. "Some data may be estimated" is not. Mention that impact estimates
-include overlap adjustments and realism caps where applied.
+**Assumptions & caveats** (1 paragraph) — Reference the assumptions documented in
+Step 6. Be specific about data gaps. "We estimated mobile order volume from total
+digital revenue and industry mobile commerce share" is useful. "Some data may be
+estimated" is not. Mention overlap adjustments and realism caps where applied.
 
 ## Principles
 
+- **Scope first, calculate second.** Never apply percentages to total revenue.
 - The methodology config drives what data to gather — never hardcode field lists.
 - Every number traces to a source. Cite URLs for web_search benchmarks.
 - Prefer company-reported data over benchmarks. Use benchmarks only for gaps.
@@ -374,6 +445,8 @@ include overlap adjustments and realism caps where applied.
 - Reason after each tool call: what did you learn? What's next?
 - The narrative is your primary deliverable. Write for a businessperson who
   needs to present these numbers with confidence.
+- Document every assumption explicitly. A defensible model has visible assumptions,
+  not hidden ones.
 `;
 }
 
@@ -421,22 +494,21 @@ export function createPipelineStream(params: {
   }).format(estimatedProjectCost);
 
   const implCostNote = estimatedImplementationCost
-    ? `The client has estimated total implementation cost at $${estimatedImplementationCost.toLocaleString()}. ` +
-      `Pass estimated_implementation_cost: ${estimatedImplementationCost} when calling run_calculation.`
-    : `No implementation cost was provided — the engine will auto-estimate it based on engagement cost and industry multipliers.`;
+    ? `The client has estimated total implementation cost at $${estimatedImplementationCost.toLocaleString()}.`
+    : `No implementation cost was provided — you must estimate it yourself based on the company's scale, organizational complexity, and what implementation actually requires for a company of this size.`;
 
   const userTask =
     `Analyze the ROI case for ${companyName} in the ${industry} industry ` +
     `using the ${serviceType} methodology.\n\n` +
-    `The estimated project cost (engagement/consulting fee) is ${formattedCost}. ` +
-    `When calling run_calculation, include this as an "engagement_cost" field ` +
-    `in the company_data.fields object with value ${estimatedProjectCost}, ` +
-    `confidence_tier "company_reported", and confidence_score 1.0.\n\n` +
+    `The estimated project cost (engagement/consulting fee) is ${formattedCost}.\n` +
     `${implCostNote}\n\n` +
-    `Follow your process: load the methodology first, then gather financial ` +
-    `data, fill gaps with web search benchmarks, and run the calculation.\n\n` +
-    `The exact service_type slug for tool calls is "${serviceType}". ` +
-    `Use this exact string when calling load_methodology and run_calculation.`;
+    `Follow the 9-step process in your instructions. Key steps:\n` +
+    `1. Load methodology (service_type: "${serviceType}")\n` +
+    `2. Load the service-specific skill if available\n` +
+    `3. Gather financial data and scope the addressable base\n` +
+    `4. Do your own calculations, then call validate_calculation to verify\n` +
+    `5. Write the narrative\n\n` +
+    `The exact service_type slug for load_methodology is "${serviceType}".`;
 
   let scenarios: Record<string, unknown> = {};
   let benchmarksStarted = false;
@@ -468,9 +540,13 @@ export function createPipelineStream(params: {
           data: { stepId: "classify", status: "active" },
         } as PipelineDataPart);
 
+        // Discover available service skills
+        const skills = await discoverSkills();
+        const skillsPrompt = buildSkillsPrompt(skills);
+
         const result = streamText({
           model: anthropic("claude-opus-4-6"),
-          system: getSystemPrompt(companyType),
+          system: getSystemPrompt(companyType, skillsPrompt),
           messages: [{ role: "user", content: userTask }],
           providerOptions: {
             anthropic: {
@@ -480,6 +556,8 @@ export function createPipelineStream(params: {
           },
           tools: {
             ...tools,
+            // Service-specific skill loading
+            ...(skills.length > 0 && { load_skill: createLoadSkillTool(skills) }),
             // Valyu financial data — restricted to 6 datasets with date guardrails (public companies only)
             ...(companyType === "public" && {
               financial_data: financialData({ maxNumResults: 5 }),
@@ -593,7 +671,7 @@ export function createPipelineStream(params: {
             }
 
             // Capture calculation results and emit to frontend
-            if (toolName === "run_calculation" && event.success === true) {
+            if (toolName === "validate_calculation" && event.success === true) {
               const output = event.output;
               if (
                 output &&
@@ -639,6 +717,23 @@ export function createPipelineStream(params: {
               summary: hypothesisMatch[2].replace(/\\"/g, '"').replace(/\\n/g, '\n'),
             },
           });
+        }
+
+        // Extract assumptions from LLM output
+        const assumptionsMatch = finalText.match(/\{"assumptions"\s*:\s*\{[\s\S]*?"investment_sizing"\s*:\s*"(?:[^"\\]|\\.)*"\s*\}\s*\}/);
+        if (assumptionsMatch) {
+          try {
+            const parsed = JSON.parse(assumptionsMatch[0]);
+            if (parsed.assumptions) {
+              writer.write({
+                type: "data-assumptions",
+                id: "assumptions",
+                data: parsed.assumptions,
+              });
+            }
+          } catch {
+            // If JSON parsing fails, skip — assumptions are best-effort
+          }
         }
 
         // Emit finalizing step completed
