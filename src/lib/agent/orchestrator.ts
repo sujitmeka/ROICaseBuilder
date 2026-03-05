@@ -216,9 +216,9 @@ Consider:
   greenfield? Post-investment gains are typically smaller.
 - **Industry context** — Where does this industry sit on digital maturity?
   (e.g., ecommerce is mature, insurance is still digitizing)
-- **Enterprise indicators** — Review the value_creation_framework from the methodology.
-  Which of the enterprise-level indicators are most relevant for this company?
-  Which indicators represent the biggest opportunity or risk?
+- **Enterprise indicators** — If the methodology includes a value_creation_framework,
+  review it to understand which enterprise-level indicators are most relevant for
+  this company. Which indicators represent the biggest opportunity or risk?
 - **Sector-specific context** — If the methodology includes a sector_lens matching
   this company's industry, use it to focus your assessment on the most relevant
   levers. For example, a retail assessment should emphasize purchase frequency and

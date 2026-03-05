@@ -38,6 +38,9 @@ export interface MethodologyConfig {
   service_type: string;
   kpis: KPIConfig[];
   realization_curve: number[];
+  value_creation_framework?: Record<string, unknown>;
+  sector_lens?: Record<string, unknown>;
+  service_tiers?: Record<string, unknown>;
 }
 
 // === Company Data ===
