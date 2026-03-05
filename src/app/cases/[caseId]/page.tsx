@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useShallow } from "zustand/react/shallow";
@@ -17,10 +18,22 @@ const ResultsView = dynamic(
   () => import("../../../components/results/ResultsView").then(m => ({ default: m.ResultsView })),
   { ssr: false }
 );
+const BackboneView = dynamic(
+  () => import("../../../components/results/BackboneView").then(m => ({ default: m.BackboneView })),
+  { ssr: false }
+);
+
+type ResultsTab = "results" | "backbone";
+
+const TABS: { value: ResultsTab; label: string }[] = [
+  { value: "results", label: "Results" },
+  { value: "backbone", label: "Backbone" },
+];
 
 export default function CasePage() {
   const params = useParams();
   const caseId = params.caseId as string;
+  const [activeTab, setActiveTab] = useState<ResultsTab>("results");
 
   const { connectionStatus, error } = useStreamStore(
     useShallow((s) => ({
@@ -51,7 +64,7 @@ export default function CasePage() {
                 ROI Case: {results.company_name}
               </h1>
               <div className="flex items-center gap-3">
-                <ScenarioToggle />
+                {activeTab === "results" && <ScenarioToggle />}
                 {isConnected ? (
                   <span className="flex items-center gap-1.5 text-xs text-blue-600">
                     <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
@@ -60,23 +73,54 @@ export default function CasePage() {
                 ) : null}
               </div>
             </div>
-            <HeroMetricBar
-              totalImpact={results.scenarios[activeScenario].total_annual_impact}
-              roi={results.scenarios[activeScenario].roi_percentage ?? 0}
-              roiMultiple={results.scenarios[activeScenario].roi_multiple ?? 0}
-              threeYearCumulative={results.scenarios[activeScenario].cumulative_3yr_impact}
-              scenario={activeScenario}
-            />
+            {activeTab === "results" && (
+              <HeroMetricBar
+                totalImpact={results.scenarios[activeScenario].total_annual_impact}
+                roi={results.scenarios[activeScenario].roi_percentage ?? 0}
+                roiMultiple={results.scenarios[activeScenario].roi_multiple ?? 0}
+                threeYearCumulative={results.scenarios[activeScenario].cumulative_3yr_impact}
+                scenario={activeScenario}
+              />
+            )}
           </div>
         </div>
 
-        {/* Structured results */}
+        {/* Tab navigation */}
+        <div className="max-w-4xl mx-auto px-6 pt-6">
+          <div
+            className="inline-flex rounded-lg border bg-gray-100 p-1"
+            role="tablist"
+            aria-label="View selector"
+          >
+            {TABS.map((tab) => (
+              <button
+                key={tab.value}
+                role="tab"
+                aria-selected={activeTab === tab.value}
+                onClick={() => setActiveTab(tab.value)}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === tab.value
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-900"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab content */}
         <div className="max-w-4xl mx-auto px-6 py-8">
-          <ResultsView
-            result={results}
-            scenario={activeScenario}
-            serviceType={serviceType || "Experience Transformation & Design"}
-          />
+          {activeTab === "results" ? (
+            <ResultsView
+              result={results}
+              scenario={activeScenario}
+              serviceType={serviceType || "Experience Transformation & Design"}
+            />
+          ) : (
+            <BackboneView />
+          )}
         </div>
       </main>
     );
