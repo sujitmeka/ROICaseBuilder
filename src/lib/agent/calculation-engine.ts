@@ -38,7 +38,11 @@ const TOTAL_CAP_PCT: Record<Scenario, number> = {
   conservative: 0.05, moderate: 0.08, aggressive: 0.12,
 };
 
-const ROI_CAP_CONSERVATIVE = 15;
+const ROI_CAP: Record<Scenario, number> = {
+  conservative: 15,
+  moderate: 30,
+  aggressive: 50,
+};
 
 const STANDARD_DISCLAIMER =
   "This analysis represents estimated potential impact based on available financial data " +
@@ -196,15 +200,16 @@ function runScenario(
     attributedImpact, kpiResults, scenario, annualRevenue, roiMult,
   );
 
-  // 6b. Apply ROI cap for conservative (after caps, where we have totalInvestment)
-  if (scenario === "conservative" && totalInvestment > 0) {
-    const maxImpact = ROI_CAP_CONSERVATIVE * totalInvestment;
+  // 6b. Apply ROI cap (after other caps, where we have totalInvestment)
+  if (totalInvestment > 0) {
+    const roiCap = ROI_CAP[scenario];
+    const maxImpact = roiCap * totalInvestment;
     if (caps.post_cap_impact > maxImpact) {
-      caps = { ...caps }; // don't mutate the original
+      caps = { ...caps };
       caps.post_cap_impact = maxImpact;
       caps.roi_cap_applied = true;
       caps.cap_footnotes = [...caps.cap_footnotes,
-        `ROI capped at ${ROI_CAP_CONSERVATIVE}x — impact reduced to $${formatCompact(maxImpact)}`,
+        `ROI capped at ${roiCap}x for ${scenario} scenario — impact reduced to $${formatCompact(maxImpact)}`,
       ];
     }
   }
@@ -364,6 +369,10 @@ function applyRealismCaps(
   let weakCaseFlag = false;
 
   // Per-driver caps (only if we have annual revenue)
+  // Note: kpi.raw_impact is the pre-attribution gross value. Per-driver caps flag
+  // disproportionately large drivers for audit visibility, but the postCapImpact
+  // (which already has attribution applied) is reduced proportionally rather than
+  // recalculated from gross KPI values.
   if (annualRevenue && annualRevenue > 0) {
     const driverCapPct = DRIVER_CAP_PCT[scenario];
     const driverCap = annualRevenue * driverCapPct;
@@ -371,21 +380,21 @@ function applyRealismCaps(
     for (const kpi of kpiResults) {
       if (kpi.skipped) continue;
       if (kpi.raw_impact > driverCap) {
+        const reduction = kpi.raw_impact - driverCap;
         kpi.capped_impact = driverCap;
         capsApplied.push(kpi.kpi_id);
         footnotes.push(
           `${kpi.kpi_label} capped at ${(driverCapPct * 100).toFixed(0)}% of revenue ` +
           `($${formatCompact(driverCap)} from $${formatCompact(kpi.raw_impact)})`,
         );
-      }
-    }
-
-    // Recalculate total if any drivers were capped
-    if (capsApplied.length > 0) {
-      postCapImpact = 0;
-      for (const kpi of kpiResults) {
-        if (kpi.skipped) continue;
-        postCapImpact += kpi.capped_impact ?? kpi.raw_impact;
+        // Reduce the attributed total proportionally
+        // (the ratio of reduction to gross keeps attribution intact)
+        const grossKpiTotal = kpiResults
+          .filter(k => !k.skipped)
+          .reduce((s, k) => s + k.raw_impact, 0);
+        if (grossKpiTotal > 0) {
+          postCapImpact -= postCapImpact * (reduction / grossKpiTotal);
+        }
       }
     }
 
