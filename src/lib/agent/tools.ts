@@ -2,7 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { supabase } from "../supabase";
 import { calculate } from "./calculation-engine";
-import type { CompanyData, ImpactAssumptions, MethodologyConfig } from "./types";
+import type { CompanyData, ImpactAssumptions, MethodologyConfig, ServiceTier } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,9 +112,15 @@ export const tools = {
         fields: company_data.fields,
       };
 
+      const serviceTiersRaw = methodology.service_tiers as Record<string, unknown> | undefined;
+      const serviceTiers = serviceTiersRaw?.tiers
+        ? serviceTiersRaw.tiers as ServiceTier[]
+        : undefined;
+
       const result = calculate(companyData, methodology, impact_assumptions as ImpactAssumptions, {
         estimatedImplementationCost: estimated_implementation_cost,
         serviceType: service_type,
+        serviceTiers,
       });
       return result;
     },

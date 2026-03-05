@@ -3,6 +3,13 @@ export type Scenario = "conservative" | "moderate" | "aggressive";
 export type DataSourceTier = "company_reported" | "industry_benchmark" | "cross_industry" | "estimated";
 export type DriverCategory = "offensive" | "defensive" | "efficiency";
 
+// === Service Tier ===
+export interface ServiceTier {
+  name: string;
+  price_range: { low: number; high: number };
+  attribution_range: { low: number; high: number };
+}
+
 // === Impact assumption types ===
 export interface TypicalRange {
   low: number;
@@ -125,6 +132,8 @@ export interface ScenarioResult {
   roi_percentage?: number;
   roi_multiple?: number;
   engagement_cost?: number;
+  attribution_factor?: number;
+  pre_attribution_impact?: number;
   skipped_kpis: string[];
   investment_breakdown?: ImplementationCostEstimate;
   overlap_adjustment?: OverlapAdjustment;

@@ -2,7 +2,7 @@ import type {
   CalculationResult, CompanyData, DriverCategory, ImpactAssumptions,
   ImplementationCostEstimate, KPIAuditEntry, KPIConfig,
   MethodologyConfig, OverlapAdjustment, RealismCapResult,
-  Scenario, ScenarioResult, YearProjection,
+  Scenario, ScenarioResult, ServiceTier, YearProjection,
 } from "./types";
 import { KPI_REGISTRY, INDUSTRY_REFERRAL_DEFAULTS, DEFAULT_REFERRAL_CONVERSION_RATE } from "./kpi-formulas";
 
@@ -13,6 +13,7 @@ import { KPI_REGISTRY, INDUSTRY_REFERRAL_DEFAULTS, DEFAULT_REFERRAL_CONVERSION_R
 export interface CalculationOptions {
   estimatedImplementationCost?: number;
   serviceType?: string;
+  serviceTiers?: ServiceTier[];
 }
 
 // ---------------------------------------------------------------------------
@@ -22,11 +23,11 @@ export interface CalculationOptions {
 const SCENARIOS: Scenario[] = ["conservative", "moderate", "aggressive"];
 
 const IMPL_MULTIPLIERS: Record<string, { low: number; mid: number; high: number }> = {
-  "experience-transformation-design": { low: 50, mid: 100, high: 150 },
-  "cost-optimization":                { low: 20, mid: 40,  high: 60 },
-  "digital-ai-transformation":        { low: 80, mid: 140, high: 200 },
-  "commercial-excellence":            { low: 30, mid: 55,  high: 80 },
-  "org-redesign":                     { low: 40, mid: 70,  high: 100 },
+  "experience-transformation-design": { low: 2, mid: 4, high: 6 },
+  "cost-optimization":                { low: 1.5, mid: 3, high: 5 },
+  "digital-ai-transformation":        { low: 3, mid: 5, high: 8 },
+  "commercial-excellence":            { low: 1.5, mid: 3, high: 5 },
+  "org-redesign":                     { low: 2, mid: 4, high: 6 },
 };
 
 const DRIVER_CAP_PCT: Record<Scenario, number> = {
@@ -99,6 +100,36 @@ export function calculate(
 }
 
 // ---------------------------------------------------------------------------
+// Attribution factor — scopes impact to what this engagement can credibly claim
+// ---------------------------------------------------------------------------
+
+function getAttributionFactor(
+  engagementCost: number,
+  scenario: Scenario,
+  serviceTiers?: ServiceTier[],
+): number {
+  const DEFAULT_ATTRIBUTION = { low: 0.10, mid: 0.20, high: 0.30 };
+
+  if (!serviceTiers || serviceTiers.length === 0) {
+    return scenario === "conservative" ? DEFAULT_ATTRIBUTION.low
+      : scenario === "aggressive" ? DEFAULT_ATTRIBUTION.high
+      : DEFAULT_ATTRIBUTION.mid;
+  }
+
+  // Find matching tier by engagement cost (with 20% tolerance above high end)
+  const tier = serviceTiers.find(t =>
+    engagementCost >= t.price_range.low * 0.8 && engagementCost <= t.price_range.high * 1.2
+  ) ?? serviceTiers[serviceTiers.length - 1]; // fallback to highest tier
+
+  const { low, high } = tier.attribution_range;
+  const mid = (low + high) / 2;
+
+  return scenario === "conservative" ? low
+    : scenario === "aggressive" ? high
+    : mid;
+}
+
+// ---------------------------------------------------------------------------
 // Scenario runner — with overlap, caps, and implementation cost
 // ---------------------------------------------------------------------------
 
@@ -134,7 +165,7 @@ function runScenario(
   // 4. Apply overlap adjustment
   const overlap = applyOverlapAdjustment(kpiResults, annualRevenue);
 
-  // 5. Calculate implementation cost → total_investment
+  // 4b. Calculate implementation cost → total_investment (needed for attribution)
   const engCost = companyData.fields.engagement_cost;
   const engCostVal = engCost?.value ?? 0;
   const investmentBreakdown = engCostVal > 0
@@ -148,26 +179,43 @@ function runScenario(
 
   const totalInvestment = investmentBreakdown?.total_investment ?? engCostVal;
 
-  // 6. ROI based on total investment (not just consulting fee)
+  // 4c. Apply attribution/scope factor
+  const attributionFactor = getAttributionFactor(engCostVal, scenario, options?.serviceTiers);
+  const attributedImpact = overlap.adjusted_total * attributionFactor;
+
+  // 5. ROI based on total investment (not just consulting fee)
   let roiPct: number | undefined;
   let roiMult: number | undefined;
   if (totalInvestment > 0) {
-    roiPct = ((overlap.adjusted_total - totalInvestment) / totalInvestment) * 100;
-    roiMult = overlap.adjusted_total / totalInvestment;
+    roiPct = ((attributedImpact - totalInvestment) / totalInvestment) * 100;
+    roiMult = attributedImpact / totalInvestment;
   }
 
-  // 7. Apply realism caps
-  const caps = applyRealismCaps(
-    overlap.adjusted_total, kpiResults, scenario, annualRevenue, roiMult,
+  // 6. Apply realism caps
+  let caps = applyRealismCaps(
+    attributedImpact, kpiResults, scenario, annualRevenue, roiMult,
   );
 
-  // Recalculate ROI after caps if cap was applied
-  if (totalInvestment > 0 && caps.post_cap_impact !== overlap.adjusted_total) {
-    roiPct = ((caps.post_cap_impact - totalInvestment) / totalInvestment) * 100;
-    roiMult = caps.post_cap_roi_multiple;
+  // 6b. Apply ROI cap for conservative (after caps, where we have totalInvestment)
+  if (scenario === "conservative" && totalInvestment > 0) {
+    const maxImpact = ROI_CAP_CONSERVATIVE * totalInvestment;
+    if (caps.post_cap_impact > maxImpact) {
+      caps = { ...caps }; // don't mutate the original
+      caps.post_cap_impact = maxImpact;
+      caps.roi_cap_applied = true;
+      caps.cap_footnotes = [...caps.cap_footnotes,
+        `ROI capped at ${ROI_CAP_CONSERVATIVE}x — impact reduced to $${formatCompact(maxImpact)}`,
+      ];
+    }
   }
 
-  // 8. Multi-year projection uses postCapImpact
+  // 6c. Always recalculate ROI after all caps
+  if (totalInvestment > 0) {
+    roiPct = ((caps.post_cap_impact - totalInvestment) / totalInvestment) * 100;
+    roiMult = caps.post_cap_impact / totalInvestment;
+  }
+
+  // 7. Multi-year projection uses postCapImpact
   const yearProjections = projectMultiYear(caps.post_cap_impact, config.realization_curve);
   const cumulative = yearProjections.reduce((s, p) => s + p.projected_impact, 0);
 
@@ -182,6 +230,8 @@ function runScenario(
     roi_percentage: roiPct,
     roi_multiple: roiMult,
     engagement_cost: engCostVal || undefined,
+    attribution_factor: attributionFactor,
+    pre_attribution_impact: overlap.adjusted_total,
     skipped_kpis: skippedKpis,
     investment_breakdown: investmentBreakdown,
     overlap_adjustment: overlap,
@@ -349,15 +399,6 @@ function applyRealismCaps(
       );
       postCapImpact = totalCap;
     }
-  }
-
-  // ROI cap at conservative
-  if (scenario === "conservative" && postCapRoi !== undefined && postCapRoi > ROI_CAP_CONSERVATIVE) {
-    roiCapApplied = true;
-    footnotes.push(`ROI capped at ${ROI_CAP_CONSERVATIVE}x for conservative scenario`);
-    // Back-calculate capped impact from max ROI
-    // We don't know total_investment here, but we can cap the multiple
-    postCapRoi = ROI_CAP_CONSERVATIVE;
   }
 
   // Weak case floor: ROI < 1.5x at conservative
