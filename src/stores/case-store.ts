@@ -95,6 +95,7 @@ interface CaseStore {
   narrative: string;
   activeScenario: Scenario;
   auditEntries: AuditEntry[];
+  hypothesis: { topic: string; summary: string } | null;
   setCaseInfo: (info: {
     caseId: string;
     companyName: string;
@@ -105,6 +106,7 @@ interface CaseStore {
   setNarrative: (text: string) => void;
   setActiveScenario: (scenario: Scenario) => void;
   setAuditEntries: (entries: AuditEntry[]) => void;
+  setHypothesis: (h: { topic: string; summary: string }) => void;
   reset: () => void;
 }
 
@@ -117,12 +119,14 @@ export const useCaseStore = create<CaseStore>((set) => ({
   narrative: "",
   activeScenario: "moderate",
   auditEntries: [],
+  hypothesis: null,
 
   setCaseInfo: (info) => set(info),
   setResult: (result) => set({ calculationResult: result }),
   setNarrative: (text) => set({ narrative: text }),
   setActiveScenario: (scenario) => set({ activeScenario: scenario }),
   setAuditEntries: (entries) => set({ auditEntries: entries }),
+  setHypothesis: (h) => set({ hypothesis: h }),
   reset: () =>
     set({
       caseId: null,
@@ -133,5 +137,6 @@ export const useCaseStore = create<CaseStore>((set) => ({
       narrative: "",
       activeScenario: "moderate",
       auditEntries: [],
+      hypothesis: null,
     }),
 }));

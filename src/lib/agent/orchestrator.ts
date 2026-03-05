@@ -304,6 +304,15 @@ After results return, sanity-check:
 - Are any KPIs skipped? Can you find the missing data?
 - Do the three scenarios form a sensible range?
 
+### Step 6b: Formulate hypothesis summary
+Before writing the narrative, produce a structured hypothesis summary that will be displayed prominently in the results. Output this exact JSON structure in your response:
+
+\`\`\`json
+{"hypothesis":{"topic":"One sentence describing the specific area of experience transformation analyzed for THIS company","summary":"2-3 sentences summarizing the core hypothesis. What experience gaps or opportunities did you identify? What is the primary mechanism through which improvement drives financial impact? Reference specific data points you found."}}
+\`\`\`
+
+The topic must be specific to THIS company — not generic. The summary should reference actual data points and financial figures you gathered.
+
 ### Step 7: Write the analysis narrative
 Write 4-6 paragraphs for the Client Partner. This is the most important output —
 the CP will read this to understand and defend the numbers in client conversations.
@@ -618,6 +627,19 @@ export function createPipelineStream(params: {
 
         // Wait for the stream to complete
         const finalText = await result.text;
+
+        // Extract hypothesis from LLM output
+        const hypothesisMatch = finalText.match(/\{"hypothesis"\s*:\s*\{[^}]*"topic"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"summary"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}\s*\}/);
+        if (hypothesisMatch) {
+          writer.write({
+            type: "data-hypothesis",
+            id: "hypothesis",
+            data: {
+              topic: hypothesisMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'),
+              summary: hypothesisMatch[2].replace(/\\"/g, '"').replace(/\\n/g, '\n'),
+            },
+          });
+        }
 
         // Emit finalizing step completed
         writer.write({

@@ -233,6 +233,21 @@ function ConfidenceNote({
   );
 }
 
+function HypothesisBox() {
+  const hypothesis = useCaseStore((s) => s.hypothesis);
+  if (!hypothesis) return null;
+
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-6 py-5">
+      <h3 className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-2">
+        Analysis Focus
+      </h3>
+      <p className="text-base font-medium text-indigo-900">{hypothesis.topic}</p>
+      <p className="mt-2 text-sm text-indigo-700 leading-relaxed">{hypothesis.summary}</p>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main ResultsView
 // ---------------------------------------------------------------------------
@@ -287,6 +302,9 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
 
   return (
     <div className="space-y-8">
+      {/* Hypothesis summary */}
+      <HypothesisBox />
+
       {/* Weak case warning */}
       {showWeakCase && <WeakCaseWarning />}
 

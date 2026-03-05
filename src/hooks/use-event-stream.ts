@@ -151,6 +151,14 @@ export function usePipelineStream(caseId: string | null) {
           setResult(d);
         }
       }
+
+      // ---- data-hypothesis part ----
+      if (dataPart.type === "data-hypothesis") {
+        const d = dataPart.data as { topic: string; summary: string };
+        if (d && d.topic && d.summary) {
+          useCaseStore.getState().setHypothesis(d);
+        }
+      }
     },
 
     onError: (error) => {
