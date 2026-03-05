@@ -181,6 +181,17 @@ Call load_methodology. The methodology is a research guide, not a formula:
 - **typical_range** gives you context for what impact percentages are common across companies (NOT a fixed formula — you'll determine the actual values)
 - **reasoning_guidance** explains how to assess each KPI for this specific company
 - **reference_sources** suggest where to find supporting data
+- **value_creation_framework** (if present) describes the enterprise-level indicators
+  this service impacts and how they map to KPIs. Use this as your mental model for
+  how this service creates value — it shapes what data to gather and how to frame
+  the narrative.
+- **sector_lens** (if present) provides industry-specific revenue levers, margin
+  drivers, and operational context. When you know the company's industry, find the
+  matching sector lens and let it sharpen your reasoning about which KPIs matter
+  most and what benchmarks to use.
+- **service_tiers** (if present) maps engagement cost to typical service tiers.
+  Use this to frame the narrative appropriately — a diagnostic engagement needs
+  different justification than an enterprise-wide redesign.
 
 ### Step 2: Gather company financials
 Follow the data strategy above. Your goal: populate every input field the methodology
@@ -205,6 +216,14 @@ Consider:
   greenfield? Post-investment gains are typically smaller.
 - **Industry context** — Where does this industry sit on digital maturity?
   (e.g., ecommerce is mature, insurance is still digitizing)
+- **Enterprise indicators** — Review the value_creation_framework from the methodology.
+  Which of the enterprise-level indicators are most relevant for this company?
+  Which indicators represent the biggest opportunity or risk?
+- **Sector-specific context** — If the methodology includes a sector_lens matching
+  this company's industry, use it to focus your assessment on the most relevant
+  levers. For example, a retail assessment should emphasize purchase frequency and
+  AOV, while travel/hospitality should focus on repeat bookings and brand promise
+  delivery.
 
 Use web_search to find specific signals: app store ratings, J.D. Power scores,
 Forrester CX Index rankings, recent UX-related press coverage, or analyst
@@ -305,6 +324,15 @@ Structure your narrative as follows:
 digital experience maturity. Reference your Step 3 assessment. Establish why this
 company is a good candidate (or faces specific challenges) for CX investment.
 
+**Value creation framing** (1 paragraph) — If the methodology includes a
+value_creation_framework, use it to frame WHY this service drives value for this
+specific company. Reference the enterprise-level indicators that are most relevant.
+If sector_lens guidance exists for this industry, use the transformation_note to
+frame how transformation works differently in this sector. If execution_discipline
+indicators are relevant, mention them qualitatively (e.g., "Beyond the financial
+impact, this engagement would also improve cross-functional alignment on priority
+customer journeys").
+
 **Data foundation** (1 paragraph) — What company-specific data did you find, from
 where? What's estimated vs. reported? This builds the CP's confidence in the inputs.
 
@@ -318,6 +346,9 @@ appear in moderate/aggressive.
 which scenario (conservative/moderate/aggressive) is the most defensible starting
 point for client conversations? Explain why. The CP needs to know which number to
 lead with and how to justify it.
+If service_tiers data is available in the methodology, note which tier the proposed
+engagement cost maps to and how the ROI justification aligns with that tier's
+value proposition.
 
 **Caveats** (1 paragraph) — Data gaps, lower-confidence estimates, and anything
 the CP should caveat when presenting. Be specific: "We estimated order volume
