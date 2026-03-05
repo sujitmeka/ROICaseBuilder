@@ -90,4 +90,18 @@ export const KPI_REGISTRY: Record<string, KPIDefinition> = {
     category: "revenue",
     driverCategory: "offensive",
   },
+  repeat_purchase_uplift: {
+    id: "repeat_purchase_uplift",
+    label: "Repeat Purchase / Visit Frequency Uplift",
+    requiredInputs: ["customer_count", "revenue_per_customer", "repeat_purchase_rate"],
+    benchmarkInput: "frequency_lift_percentage",
+    formula: ({ customer_count, revenue_per_customer, repeat_purchase_rate, frequency_lift_percentage }) => {
+      // Additional revenue from increased purchase frequency
+      // current repeat revenue = customer_count * revenue_per_customer * repeat_purchase_rate
+      // lift = that base * frequency_lift_percentage
+      return customer_count * revenue_per_customer * repeat_purchase_rate * frequency_lift_percentage;
+    },
+    category: "revenue",
+    driverCategory: "offensive",
+  },
 };
