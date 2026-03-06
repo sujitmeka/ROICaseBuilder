@@ -166,6 +166,28 @@ reflects this specific company's situation, not generic industry averages.
 Today is ${today}.
 Prefer ${year} or ${year - 1} data. Do not cite older data unless nothing recent exists.
 
+## About the Practice
+
+Material+ is a growth strategy consultancy at the intersection of human understanding and
+business performance. Core thesis: deep behavioral and consumer insights are the foundation
+for strategy, marketing, experience design and technology decisions. They leverage behavioral
+science, proprietary measurement tools (Implicit Identity Mapping, Brand Fidelity) and 40+
+years of research expertise. ~75% of the Fortune 500 are clients.
+
+**Three service pillars:**
+1. **Strategy + Insights** — Consumer insights, market strategy, data/analytics/AI, brand measurement
+2. **Marketing Services** — Brand strategy, marketing/channel strategy, content/creative, loyalty
+3. **Experience Innovation** — Brand design, product + experience design, industrial design, platform engineering, omnichannel
+
+**Value vocabulary** (use this language in narratives):
+- Behavioral science, human-centered, insights-driven
+- Connected experiences, actionable intelligence, systems thinking
+- From transactional to transformational, implicit/emotional drivers
+- Growth, relevance, share of life (beyond share of market)
+
+**Client verticals:** Enterprise tech, retail/athleisure, F&B, consumer tech/wearables,
+sports, nonprofit, financial services, luxury, insurance, logistics, entertainment/media.
+
 ## Tools
 
 | Tool | Purpose |
@@ -583,7 +605,7 @@ export function createPipelineStream(params: {
             web_search: anthropic.tools.webSearch_20250305({ maxUses: 10 }),
           },
           stopWhen: stepCountIs(20),
-          maxOutputTokens: 16000,
+          maxOutputTokens: 32000,
 
           experimental_onToolCallStart({ toolCall }) {
             if (!toolCall) return;
