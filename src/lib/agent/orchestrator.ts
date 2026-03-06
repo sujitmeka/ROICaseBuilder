@@ -1,7 +1,7 @@
 /**
  * CPROIOrchestrator — Agentic ROI pipeline using Vercel AI SDK streamText().
  *
- * Uses streamText() + stopWhen(stepCountIs(20)) to run the multi-step pipeline.
+ * Uses streamText() + stopWhen(stepCountIs(30)) to run the multi-step pipeline.
  * Emits custom data parts (data-activity, data-pipeline) via createUIMessageStream
  * so the frontend can show real-time progress. Results are rendered from the
  * structured CalculationResult data, not from the LLM's text output.
@@ -604,7 +604,7 @@ export function createPipelineStream(params: {
             company_research: companyResearch(),
             web_search: anthropic.tools.webSearch_20250305({ maxUses: 10 }),
           },
-          stopWhen: stepCountIs(20),
+          stopWhen: stepCountIs(30),
           maxOutputTokens: 32000,
 
           experimental_onToolCallStart({ toolCall }) {
@@ -703,22 +703,28 @@ export function createPipelineStream(params: {
             }
 
             // Capture calculation results and emit to frontend
-            if (toolName === "validate_calculation" && event.success === true) {
-              const output = event.output;
-              if (
-                output &&
-                typeof output === "object" &&
-                "scenarios" in output
-              ) {
-                scenarios = output as Record<string, unknown>;
+            if (toolName === "validate_calculation") {
+              if (event.success === true) {
+                const output = event.output;
+                if (
+                  output &&
+                  typeof output === "object" &&
+                  "scenarios" in output
+                ) {
+                  scenarios = output as Record<string, unknown>;
 
-                // Emit result as a custom data part so the frontend can
-                // render structured results immediately (no message parsing needed)
-                writer.write({
-                  type: "data-result",
-                  id: "calculation-result",
-                  data: output,
-                });
+                  // Emit result as a custom data part so the frontend can
+                  // render structured results immediately (no message parsing needed)
+                  writer.write({
+                    type: "data-result",
+                    id: "calculation-result",
+                    data: output,
+                  });
+                } else {
+                  console.error("[orchestrator] validate_calculation succeeded but output missing 'scenarios':", JSON.stringify(output)?.slice(0, 500));
+                }
+              } else {
+                console.error("[orchestrator] validate_calculation failed:", event.error);
               }
             }
           },
@@ -774,6 +780,11 @@ export function createPipelineStream(params: {
           id: "step-narrative",
           data: { stepId: "narrative", status: "completed" },
         } as PipelineDataPart);
+
+        // Log warning if validate_calculation was never called
+        if (!scenarios || Object.keys(scenarios).length === 0) {
+          console.warn("[orchestrator] Pipeline completed WITHOUT validate_calculation producing results. The agent may have hit the step limit (20) before calling it.");
+        }
 
         // Emit pipeline completed
         writer.write({

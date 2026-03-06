@@ -90,7 +90,6 @@ export interface CalculationResult {
 interface CaseStore {
   caseId: string | null;
   companyName: string;
-  industry: string;
   serviceType: string;
   calculationResult: CalculationResult | null;
   narrative: string;
@@ -101,7 +100,6 @@ interface CaseStore {
   setCaseInfo: (info: {
     caseId: string;
     companyName: string;
-    industry: string;
     serviceType: string;
   }) => void;
   setResult: (result: CalculationResult) => void;
@@ -116,7 +114,6 @@ interface CaseStore {
 export const useCaseStore = create<CaseStore>((set) => ({
   caseId: null,
   companyName: "",
-  industry: "",
   serviceType: "",
   calculationResult: null,
   narrative: "",
@@ -136,7 +133,6 @@ export const useCaseStore = create<CaseStore>((set) => ({
     set({
       caseId: null,
       companyName: "",
-      industry: "",
       serviceType: "",
       calculationResult: null,
       narrative: "",

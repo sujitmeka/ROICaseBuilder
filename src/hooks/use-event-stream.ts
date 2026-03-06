@@ -84,14 +84,12 @@ export function usePipelineStream(caseId: string | null) {
       if (dataPart.type === "data-caseinfo") {
         const d = dataPart.data as {
           companyName: string;
-          industry: string;
           serviceType: string;
           caseId: string;
         };
         useCaseStore.getState().setCaseInfo({
           caseId: d.caseId,
           companyName: d.companyName,
-          industry: d.industry,
           serviceType: d.serviceType,
         });
       }
