@@ -20,8 +20,8 @@ export const caseInputSchema = z.object({
   serviceType: z.enum(SERVICE_TYPES),
   projectContext: z
     .string()
-    .max(5000, "Project context must be 5000 characters or fewer")
-    .optional(),
+    .min(1, "Project context is required")
+    .max(5000, "Project context must be 5000 characters or fewer"),
   documentContent: z.string().optional(),
 });
 
