@@ -142,16 +142,31 @@ function BackboneViewInner() {
         ]}
       />
 
-      {/* Scoping by Engagement Tier */}
-      <SectionHeader title="Scoping by Engagement Tier" />
+      {/* Scoping the Impact Area */}
+      <SectionHeader title="Scoping the Impact Area" />
       <Table
-        headers={["Tier", "Cost", "Scope", "Addressable Base"]}
+        headers={["Step", "What Happens"]}
         rows={[
-          ["CORE", "$150\u2013200K", "1 priority journey", "Revenue through that ONE journey"],
-          ["EXPANDED", "$275\u2013350K", "2\u20133 priority journeys", "Combined revenue through those journeys"],
-          ["ENTERPRISE", "$400\u2013500K+", "Full customer lifecycle / multi-BU", "Broader base, still not total revenue"],
+          [
+            "1. Read the context",
+            "From the CP\u2019s description and any uploaded RFP/brief, identify what\u2019s actually being changed \u2014 a journey, a process, an org structure, a capability",
+          ],
+          [
+            "2. Determine the impact dimension",
+            "Not every engagement is about revenue. Match to the right dimension: revenue, cost reduction, time/efficiency, risk mitigation, or capability enablement",
+          ],
+          [
+            "3. Narrow to the addressable base",
+            "The slice of the business that the engagement actually touches. Never apply improvement % to the whole company \u2014 only to what\u2019s in scope",
+          ],
         ]}
       />
+      <p className="mt-4 text-sm text-[#a8a8a8] leading-relaxed">
+        <span className="text-white font-medium">The golden rule:</span> The CP&apos;s
+        project description tells you the scope &mdash; not a tier label, not a price
+        point. A $500K engagement redesigning one checkout flow has a narrower base
+        than a $200K engagement auditing three business units.
+      </p>
 
       {/* Scenario Differentiation */}
       <SectionHeader title="Scenario Differentiation" />
