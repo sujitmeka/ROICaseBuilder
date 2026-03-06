@@ -1,14 +1,47 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-background: #ffffff;
-  --color-foreground: #171717;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* M+ editorial dark theme */
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  --color-text-secondary: #a8a8a8;
+  --color-text-tertiary: #707070;
+  --color-border-subtle: #2a2a2a;
+  --color-surface: #111111;
+  --color-surface-hover: #1a1a1a;
+  --color-input-bg: #0a0a0a;
+  --color-focus-ring: #ffffff;
+
+  --font-display: var(--font-outfit);
+  --font-body: var(--font-outfit);
 }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+/* Thin horizontal dividers — editorial style */
+hr {
+  border: none;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
 }

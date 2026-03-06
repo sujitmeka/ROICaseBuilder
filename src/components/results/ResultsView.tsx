@@ -25,10 +25,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_BADGE: Record<string, string> = {
-  revenue: "bg-blue-50 text-blue-700 border-blue-200",
-  retention: "bg-purple-50 text-purple-700 border-purple-200",
-  cost_savings: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  engagement: "bg-amber-50 text-amber-700 border-amber-200",
+  revenue: "bg-[#1a1a1a] text-[#a8a8a8] border-[#2a2a2a]",
+  retention: "bg-[#1a1a1a] text-[#a8a8a8] border-[#2a2a2a]",
+  cost_savings: "bg-[#1a1a1a] text-[#a8a8a8] border-[#2a2a2a]",
+  engagement: "bg-[#1a1a1a] text-[#a8a8a8] border-[#2a2a2a]",
 };
 
 // ---------------------------------------------------------------------------
@@ -51,13 +51,13 @@ function ROIStatement({
   threeYearCumulative: string;
 }) {
   return (
-    <div className="relative rounded-xl p-[2px] bg-gradient-to-r from-blue-500 to-purple-500">
-      <div className="rounded-[10px] bg-white px-6 py-8 sm:px-8">
-        <p className="text-xl sm:text-2xl font-semibold text-gray-900 leading-relaxed select-text">
+    <div className="relative rounded-xl border border-[#2a2a2a]">
+      <div className="rounded-[10px] bg-[#111111] px-6 py-8 sm:px-8">
+        <p className="text-xl sm:text-2xl font-semibold text-white leading-relaxed select-text">
           {investmentBreakdown ? (
             <>
               With a total investment of{" "}
-              <span className="text-blue-700">
+              <span className="font-bold text-white">
                 {formatCurrency(investmentBreakdown.total_investment)}
               </span>{" "}
               in {serviceType},{" "}
@@ -66,20 +66,20 @@ function ROIStatement({
             <>Through {serviceType}, </>
           )}
           <span className="font-bold">{companyName}</span> has potential to unlock{" "}
-          <span className="text-blue-700">{annualImpact}</span> in annual
+          <span className="font-bold text-white">{annualImpact}</span> in annual
           revenue impact
           {roiMultiple && (
             <>
               {" "}
               &mdash; a{" "}
-              <span className="text-purple-700 font-bold">{roiMultiple}</span>{" "}
+              <span className="font-bold text-white">{roiMultiple}</span>{" "}
               return on total investment
             </>
           )}
           .
         </p>
         {investmentBreakdown && (
-          <p className="mt-2 text-xs text-gray-400 select-text">
+          <p className="mt-2 text-xs text-[#707070] select-text">
             Investment: {formatCurrency(investmentBreakdown.consulting_fee)} consulting
             {" + "}
             {formatCurrency(investmentBreakdown.implementation_cost)} implementation
@@ -88,9 +88,9 @@ function ROIStatement({
             )}
           </p>
         )}
-        <p className="mt-2 text-sm text-gray-500 select-text">
+        <p className="mt-2 text-sm text-[#a8a8a8] select-text">
           3-year cumulative value (risk-adjusted):{" "}
-          <span className="font-medium text-gray-700">
+          <span className="font-medium text-white">
             {threeYearCumulative}
           </span>
         </p>
@@ -102,7 +102,7 @@ function ROIStatement({
 function WeakCaseWarning() {
   return (
     <div
-      className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+      className="rounded-md border border-[#2a2a2a] bg-[#111111] px-4 py-3 text-sm text-amber-400"
       role="alert"
     >
       <span className="font-medium">Low ROI signal:</span> The conservative scenario
@@ -117,7 +117,7 @@ function OverlapNotice({ data }: { data: ScenarioData }) {
   if (!overlap || overlap.overlap_discount_pct < 0.005) return null;
 
   return (
-    <div className="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+    <div className="rounded-md border border-[#2a2a2a] bg-[#111111] px-4 py-3 text-sm text-[#a8a8a8]">
       Impact adjusted for driver overlap: gross{" "}
       <span className="font-medium">{formatCurrency(overlap.gross_total)}</span>
       {" → net "}
@@ -144,7 +144,7 @@ function CapFootnotes({ data }: { data: ScenarioData }) {
 function DisclaimerSection({ disclaimer }: { disclaimer: string }) {
   return (
     <section className="mt-4">
-      <p className="text-xs text-gray-400 leading-relaxed">
+      <p className="text-xs text-[#707070] leading-relaxed">
         {disclaimer}
       </p>
     </section>
@@ -152,35 +152,35 @@ function DisclaimerSection({ disclaimer }: { disclaimer: string }) {
 }
 
 function MetricCard({ kpi }: { kpi: KpiResult }) {
-  const badgeClass = CATEGORY_BADGE[kpi.category] ?? "bg-gray-50 text-gray-700 border-gray-200";
+  const badgeClass = CATEGORY_BADGE[kpi.category] ?? "bg-[#1a1a1a] text-[#a8a8a8] border-[#2a2a2a]";
   const categoryLabel = CATEGORY_LABELS[kpi.category] ?? kpi.category;
   const isCapped = kpi.capped_impact !== undefined && kpi.capped_impact < kpi.raw_impact;
   const displayValue = isCapped ? kpi.capped_impact! : kpi.raw_impact;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-5">
+    <div className="rounded-lg border border-[#2a2a2a] bg-[#111111] p-5">
       <div className="mb-3">
-        <h4 className="text-sm font-semibold text-gray-900">{kpi.kpi_label}</h4>
-        <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+        <h4 className="text-sm font-semibold text-white">{kpi.kpi_label}</h4>
+        <p className="text-2xl font-bold text-white mt-1 tabular-nums">
           {formatCurrency(displayValue)}
         </p>
         {isCapped && (
-          <p className="text-xs text-amber-600 mt-0.5">
+          <p className="text-xs text-amber-400 mt-0.5">
             Capped from {formatCurrency(kpi.raw_impact)}
           </p>
         )}
       </div>
 
-      <p className="text-xs text-gray-500 mb-3">{kpi.formula_description}</p>
+      <p className="text-xs text-[#a8a8a8] mb-3">{kpi.formula_description}</p>
 
-      <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+      <div className="flex items-center gap-3 pt-3 border-t border-[#2a2a2a]">
         <span
           className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClass}`}
         >
           {categoryLabel}
         </span>
 
-        <span className="ml-auto text-xs font-medium text-gray-400 tabular-nums">
+        <span className="ml-auto text-xs font-medium text-[#707070] tabular-nums">
           {Math.round(kpi.impact_assumption * 100)}% est. impact
         </span>
       </div>
@@ -192,19 +192,19 @@ function ProjectionRow({ projection }: { projection: YearProjection }) {
   return (
     <div
       className={`flex items-center gap-4 py-3 px-4 ${
-        projection.year % 2 === 0 ? "bg-gray-50" : "bg-white"
+        projection.year % 2 === 0 ? "bg-[#111111]" : "bg-black"
       }`}
     >
-      <span className="w-20 text-sm font-medium text-gray-900">
+      <span className="w-20 text-sm font-medium text-white">
         Year {projection.year}
       </span>
-      <span className="flex-1 text-sm tabular-nums text-gray-700">
+      <span className="flex-1 text-sm tabular-nums text-white">
         {formatCurrency(projection.projected_impact)}
       </span>
-      <span className="flex-1 text-sm tabular-nums text-gray-700">
+      <span className="flex-1 text-sm tabular-nums text-white">
         {formatCurrency(projection.cumulative_impact)}
       </span>
-      <span className="w-24 text-right text-sm tabular-nums text-gray-500">
+      <span className="w-24 text-right text-sm tabular-nums text-[#707070]">
         {Math.round(projection.realization_percentage * 100)}%
       </span>
     </div>
@@ -220,8 +220,8 @@ function ConfidenceNote({
 }) {
   const styles =
     severity === "warning"
-      ? "bg-amber-50 border-l-amber-500 text-amber-800"
-      : "bg-blue-50 border-l-blue-500 text-blue-800";
+      ? "bg-[#111111] border-l-amber-500 text-amber-400"
+      : "bg-[#111111] border-l-[#a8a8a8] text-[#a8a8a8]";
 
   return (
     <div
@@ -238,12 +238,12 @@ function HypothesisBox() {
   if (!hypothesis) return null;
 
   return (
-    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-6 py-5">
-      <h3 className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-2">
+    <div className="rounded-lg border border-[#2a2a2a] bg-[#111111] px-6 py-5">
+      <h3 className="text-xs font-semibold text-[#707070] uppercase tracking-wide mb-2">
         Analysis Focus
       </h3>
-      <p className="text-base font-medium text-indigo-900">{hypothesis.topic}</p>
-      <p className="mt-2 text-sm text-indigo-700 leading-relaxed">{hypothesis.summary}</p>
+      <p className="text-base font-medium text-white">{hypothesis.topic}</p>
+      <p className="mt-2 text-sm text-[#a8a8a8] leading-relaxed">{hypothesis.summary}</p>
     </div>
   );
 }
@@ -263,11 +263,11 @@ function NarrativeSection() {
   if (!narrative) return null;
   return (
     <section className="space-y-2">
-      <h3 className="text-base font-semibold text-gray-900">
+      <h3 className="text-base font-semibold text-white">
         Analysis Notes
       </h3>
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <div className="prose prose-sm max-w-none text-gray-700 prose-headings:text-gray-900 prose-strong:text-gray-800">
+      <div className="rounded-lg border border-[#2a2a2a] bg-[#111111] p-6">
+        <div className="prose prose-sm prose-invert max-w-none text-[#a8a8a8] prose-headings:text-white prose-strong:text-white">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {narrative}
           </ReactMarkdown>
@@ -327,13 +327,13 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
 
       {/* Executive Summary — generated from data */}
       <section className="space-y-2">
-        <h3 className="text-base font-semibold text-gray-900">
+        <h3 className="text-base font-semibold text-white">
           Executive Summary
         </h3>
-        <p className="text-sm text-gray-700 leading-relaxed">
+        <p className="text-sm text-[#a8a8a8] leading-relaxed">
           Based on {result.industry} benchmarks and {result.company_name}
           &apos;s financial data, this analysis identifies{" "}
-          <span className="font-medium">{activeKpis.length} high-impact opportunities</span>{" "}
+          <span className="font-medium text-white">{activeKpis.length} high-impact opportunities</span>{" "}
           across {categories.map((c) => CATEGORY_LABELS[c] ?? c).join(", ")}.
           {result.data_completeness < 1 && (
             <>
@@ -349,7 +349,7 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
       {/* KPI Impact Cards */}
       {activeKpis.length > 0 && (
         <section>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">
+          <h3 className="text-base font-semibold text-white mb-4">
             Impact Breakdown
           </h3>
           <div
@@ -366,11 +366,11 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
       {/* 3-Year Projections */}
       {data.year_projections.length > 0 && (
         <section>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">
+          <h3 className="text-base font-semibold text-white mb-4">
             3-Year Outlook (risk-adjusted)
           </h3>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="flex items-center gap-4 py-2 px-4 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <div className="rounded-lg border border-[#2a2a2a] bg-black overflow-hidden">
+            <div className="flex items-center gap-4 py-2 px-4 bg-[#111111] text-xs font-medium text-[#707070] uppercase tracking-wide">
               <span className="w-20">Year</span>
               <span className="flex-1">Annual Impact</span>
               <span className="flex-1">Cumulative</span>
@@ -398,20 +398,20 @@ function ResultsViewInner({ result, scenario, serviceType }: Props) {
       {/* Skipped KPIs */}
       {skippedKpis.length > 0 && (
         <section>
-          <h3 className="text-sm font-medium text-gray-500 mb-3">
+          <h3 className="text-sm font-medium text-[#707070] mb-3">
             Skipped Metrics
           </h3>
           <div className="space-y-2">
             {skippedKpis.map((kpi) => (
               <div
                 key={kpi.kpi_id}
-                className="rounded-lg border border-gray-100 bg-gray-50 px-5 py-4"
+                className="rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-5 py-4"
               >
-                <p className="text-sm text-gray-400 line-through">
+                <p className="text-sm text-[#707070] line-through">
                   {kpi.kpi_label}
                 </p>
                 {kpi.skip_reason && (
-                  <p className="mt-1 text-xs italic text-gray-400">
+                  <p className="mt-1 text-xs italic text-[#707070]">
                     {kpi.skip_reason}
                   </p>
                 )}

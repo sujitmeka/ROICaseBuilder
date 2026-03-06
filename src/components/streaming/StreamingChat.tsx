@@ -86,12 +86,12 @@ function ToolOutputSummary({
   if (toolName === "load_methodology") {
     const kpis = data.kpis as Array<{ id: string; label: string }> | undefined;
     return (
-      <div className="text-sm text-gray-600 space-y-1">
-        <p className="font-medium text-gray-700">
+      <div className="text-sm text-[#a8a8a8] space-y-1">
+        <p className="font-medium text-white">
           Methodology loaded: {(data.name as string) ?? "Experience Transformation"}
         </p>
         {kpis && (
-          <ul className="list-disc list-inside text-xs text-gray-500">
+          <ul className="list-disc list-inside text-xs text-[#707070]">
             {kpis.map((k) => (
               <li key={k.id}>{k.label}</li>
             ))}
@@ -113,10 +113,10 @@ function ToolOutputSummary({
         ? (moderate.kpi_results as Array<{ skipped?: boolean }>).filter((k) => !k.skipped).length
         : 0;
       return (
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-[#a8a8a8]">
           <p>
-            <span className="font-medium text-gray-700">{formatted}</span> annual impact across{" "}
-            <span className="font-medium text-gray-700">{kpiCount} KPIs</span>
+            <span className="font-medium text-white">{formatted}</span> annual impact across{" "}
+            <span className="font-medium text-white">{kpiCount} KPIs</span>
           </p>
         </div>
       );
@@ -130,8 +130,8 @@ function ToolOutputSummary({
       | undefined;
     if (results && results.length > 0) {
       return (
-        <div className="text-sm text-gray-600 space-y-1">
-          <p className="font-medium text-gray-700">
+        <div className="text-sm text-[#a8a8a8] space-y-1">
+          <p className="font-medium text-white">
             Found {results.length} result{results.length > 1 ? "s" : ""}
           </p>
         </div>
@@ -143,10 +143,10 @@ function ToolOutputSummary({
       .slice(0, 3);
     if (keys.length > 0) {
       return (
-        <div className="text-sm text-gray-600 space-y-1">
+        <div className="text-sm text-[#a8a8a8] space-y-1">
           {keys.map((k) => (
             <p key={k} className="truncate">
-              <span className="font-medium text-gray-700">{k}:</span>{" "}
+              <span className="font-medium text-white">{k}:</span>{" "}
               {String(data[k]).slice(0, 100)}
             </p>
           ))}
@@ -158,9 +158,9 @@ function ToolOutputSummary({
   if (toolName === "company_research") {
     const name = data.name ?? data.company_name;
     return (
-      <div className="text-sm text-gray-600">
+      <div className="text-sm text-[#a8a8a8]">
         {name != null && (
-          <p className="font-medium text-gray-700">{String(name)}</p>
+          <p className="font-medium text-white">{String(name)}</p>
         )}
         {data.description != null && (
           <p className="truncate">
@@ -175,12 +175,12 @@ function ToolOutputSummary({
     const url = data.url ?? data.source_url;
     const title = data.title;
     return (
-      <div className="text-sm text-gray-600">
+      <div className="text-sm text-[#a8a8a8]">
         {title != null && (
-          <p className="font-medium text-gray-700">{String(title)}</p>
+          <p className="font-medium text-white">{String(title)}</p>
         )}
         {url != null && (
-          <p className="text-xs text-gray-400 truncate">{String(url)}</p>
+          <p className="text-xs text-[#707070] truncate">{String(url)}</p>
         )}
       </div>
     );
@@ -192,10 +192,10 @@ function ToolOutputSummary({
     .slice(0, 4);
   if (fallbackKeys.length > 0) {
     return (
-      <div className="text-sm text-gray-600 space-y-1">
+      <div className="text-sm text-[#a8a8a8] space-y-1">
         {fallbackKeys.map((k) => (
           <p key={k} className="truncate">
-            <span className="font-medium text-gray-700">
+            <span className="font-medium text-white">
               {k.replace(/_/g, " ")}:
             </span>{" "}
             {typeof data[k] === "object"
@@ -231,7 +231,7 @@ function WebSearchResults({ output }: { output: unknown }) {
     <div className="space-y-2">
       {results.slice(0, 5).map((r, i) => (
         <div key={i} className="flex items-start gap-2">
-          <span className="mt-0.5 text-gray-400 text-xs">
+          <span className="mt-0.5 text-[#707070] text-xs">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
             </svg>
@@ -242,21 +242,21 @@ function WebSearchResults({ output }: { output: unknown }) {
                 href={r.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium truncate block"
+                className="text-sm text-[#a8a8a8] hover:text-white underline font-medium truncate block"
               >
                 {r.title ?? r.url}
               </a>
             ) : (
-              <p className="text-sm font-medium text-gray-700">{r.title}</p>
+              <p className="text-sm font-medium text-white">{r.title}</p>
             )}
             {r.snippet && (
-              <p className="text-xs text-gray-500 line-clamp-2">{r.snippet}</p>
+              <p className="text-xs text-[#707070] line-clamp-2">{r.snippet}</p>
             )}
           </div>
         </div>
       ))}
       {results.length > 5 && (
-        <p className="text-xs text-gray-400">+{results.length - 5} more results</p>
+        <p className="text-xs text-[#707070]">+{results.length - 5} more results</p>
       )}
     </div>
   );
@@ -284,27 +284,27 @@ const ToolCallSection = memo(function ToolCallSection({
   const label = getToolLabel(toolName, input as Record<string, unknown>);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+    <div className="rounded-lg border border-[#2a2a2a] bg-[#111111] overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#1a1a1a] transition-colors"
       >
         {/* Status icon */}
         {isRunning ? (
-          <span className="flex-shrink-0 h-5 w-5 text-blue-500 animate-spin">
+          <span className="flex-shrink-0 h-5 w-5 text-white animate-spin">
             <svg viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
           </span>
         ) : isError ? (
-          <span className="flex-shrink-0 h-5 w-5 text-red-500">
+          <span className="flex-shrink-0 h-5 w-5 text-red-400">
             <svg viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
             </svg>
           </span>
         ) : (
-          <span className="flex-shrink-0 h-5 w-5 text-green-500">
+          <span className="flex-shrink-0 h-5 w-5 text-white">
             <svg viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
@@ -312,11 +312,11 @@ const ToolCallSection = memo(function ToolCallSection({
         )}
 
         {/* Label */}
-        <span className="flex-1 text-sm font-medium text-gray-700">{label}</span>
+        <span className="flex-1 text-sm font-medium text-[#a8a8a8]">{label}</span>
 
         {/* Chevron */}
         <svg
-          className={`h-4 w-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 text-[#707070] transition-transform ${open ? "rotate-180" : ""}`}
           viewBox="0 0 20 20"
           fill="currentColor"
         >
@@ -326,7 +326,7 @@ const ToolCallSection = memo(function ToolCallSection({
 
       {/* Collapsible content */}
       {open && isComplete && (
-        <div className="px-4 pb-4 border-t border-gray-100">
+        <div className="px-4 pb-4 border-t border-[#2a2a2a]">
           <div className="pt-3">
             {toolName === "web_search" ? (
               <WebSearchResults output={output} />
@@ -354,7 +354,7 @@ function SourceLink({ url, title }: { url: string; title?: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+      className="inline-flex items-center gap-1.5 text-xs text-[#a8a8a8] hover:text-white underline"
     >
       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -414,7 +414,7 @@ function StreamingChatInner({ messages }: { messages: UIMessage[] }) {
         // Text parts — render AI reasoning as markdown
         if (part.type === "text" && part.text?.trim()) {
           return (
-            <div key={key} className="prose prose-sm max-w-none text-gray-600 prose-headings:text-gray-900 prose-headings:text-base prose-strong:text-gray-800 prose-li:text-gray-600">
+            <div key={key} className="prose prose-sm prose-invert max-w-none text-[#a8a8a8] prose-headings:text-white prose-headings:text-base prose-strong:text-white prose-li:text-[#a8a8a8]">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {part.text}
               </ReactMarkdown>

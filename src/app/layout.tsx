@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Outfit } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -25,19 +21,26 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <nav className="border-b border-gray-200 bg-white">
-          <div className="max-w-6xl mx-auto px-6 flex items-center h-14 gap-8">
-            <Link href="/" className="text-sm font-semibold tracking-tight text-gray-900">
+      <body className={`${outfit.variable} antialiased`}>
+        <nav className="bg-black">
+          <div className="max-w-[1280px] mx-auto px-12 flex items-center justify-between h-16">
+            <Link
+              href="/"
+              className="text-lg font-semibold tracking-tight text-white"
+            >
               CPROI
             </Link>
-            <div className="flex items-center gap-6">
-              <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
+            <div className="flex items-center gap-10">
+              <Link
+                href="/"
+                className="text-[13px] font-medium uppercase tracking-[0.15em] text-[#a8a8a8] hover:text-white transition-colors"
+              >
                 ROI Builder
               </Link>
-              <Link href="/methodologies" className="text-sm text-gray-600 hover:text-gray-900">
+              <Link
+                href="/methodologies"
+                className="text-[13px] font-medium uppercase tracking-[0.15em] text-[#a8a8a8] hover:text-white transition-colors"
+              >
                 Methodologies
               </Link>
             </div>

@@ -55,12 +55,12 @@ export function CompanyAutocomplete({ value, onChange }: Props) {
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-autocomplete="list"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full rounded-sm border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-[#707070] focus:outline-none focus:border-white focus:ring-1 focus:ring-white"
       />
       {isOpen && suggestions.length > 0 && (
         <ul
           role="listbox"
-          className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg"
+          className="absolute z-50 mt-1 w-full rounded-sm border border-[#2a2a2a] bg-[#111111] shadow-2xl shadow-black/50"
         >
           {suggestions.map((company) => (
             <li
@@ -71,10 +71,10 @@ export function CompanyAutocomplete({ value, onChange }: Props) {
                 onChange(company.name);
                 setIsOpen(false);
               }}
-              className="cursor-pointer px-3 py-2 text-sm hover:bg-gray-100"
+              className="cursor-pointer px-3 py-2 text-sm text-white hover:bg-[#1a1a1a]"
             >
               <span className="font-medium">{company.name}</span>
-              <span className="ml-2 text-xs text-gray-500">
+              <span className="ml-2 text-xs text-[#707070]">
                 {company.exchange}: {company.ticker}
               </span>
             </li>

@@ -55,7 +55,7 @@ export function InlineEditor({
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="h-8 w-32 text-sm rounded border border-gray-300 px-2"
+          className="h-8 w-32 text-sm rounded-sm border border-[#2a2a2a] bg-[#0a0a0a] text-white px-2 focus:border-white focus:ring-1 focus:ring-white focus:outline-none"
           aria-label={`Edit value for ${entryId}`}
         />
       </div>
@@ -68,12 +68,12 @@ export function InlineEditor({
         setEditValue(String(currentValue));
         setIsEditing(true);
       }}
-      className="group flex items-center gap-1.5 text-lg font-semibold hover:text-blue-600 transition-colors cursor-pointer"
+      className="group flex items-center gap-1.5 text-lg font-semibold text-white hover:text-[#a8a8a8] transition-colors cursor-pointer"
       aria-label={`Click to edit: ${formattedValue}`}
       title="Click to override this value"
     >
       {formattedValue}
-      <Pencil className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <Pencil className="h-3 w-3 text-[#707070] opacity-0 group-hover:opacity-100 transition-opacity" />
     </button>
   );
 }

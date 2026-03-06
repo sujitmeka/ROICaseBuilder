@@ -29,7 +29,7 @@ function formatPercent(v: number) {
 
 function IndustryBadge({ industry }: { industry: string }) {
   return (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+    <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#1a1a1a] text-[#a8a8a8] border border-[#2a2a2a]">
       {industry.replace(/_/g, " ")}
     </span>
   );
@@ -37,30 +37,30 @@ function IndustryBadge({ industry }: { industry: string }) {
 
 function KPICard({ kpi }: { kpi: KPI }) {
   return (
-    <div className="border border-gray-200 rounded-lg p-5 bg-white">
+    <div className="border border-[#2a2a2a] rounded-lg p-5 bg-[#111111]">
       <div>
-        <h3 className="font-semibold text-gray-900">{kpi.label}</h3>
-        <p className="mt-1 text-sm text-gray-500 font-mono">{kpi.formula}</p>
+        <h3 className="font-semibold text-white">{kpi.label}</h3>
+        <p className="mt-1 text-sm text-[#707070] font-mono">{kpi.formula}</p>
       </div>
 
-      <div className="mt-4 rounded-md bg-gray-50 border border-gray-100 p-3">
-        <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Typical Range</div>
-        <div className="mt-1 text-lg font-semibold text-gray-700">
+      <div className="mt-4 rounded-md bg-[#0a0a0a] border border-[#2a2a2a] p-3">
+        <div className="text-xs text-[#707070] font-medium uppercase tracking-wide">Typical Range</div>
+        <div className="mt-1 text-lg font-semibold text-white">
           {formatPercent(kpi.typical_range.low)} – {formatPercent(kpi.typical_range.high)}
         </div>
       </div>
 
       {kpi.reasoning_guidance && (
         <div className="mt-3">
-          <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Reasoning Guidance</div>
-          <p className="mt-1 text-sm text-gray-600">{kpi.reasoning_guidance}</p>
+          <div className="text-xs text-[#707070] font-medium uppercase tracking-wide">Reasoning Guidance</div>
+          <p className="mt-1 text-sm text-[#a8a8a8]">{kpi.reasoning_guidance}</p>
         </div>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-gray-400">Inputs:</span>
+        <span className="text-xs text-[#707070]">Inputs:</span>
         {kpi.inputs.map((input) => (
-          <span key={input} className="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 font-mono">
+          <span key={input} className="inline-block px-2 py-0.5 rounded text-xs bg-[#1a1a1a] text-[#a8a8a8] font-mono">
             {input}
           </span>
         ))}
@@ -68,8 +68,8 @@ function KPICard({ kpi }: { kpi: KPI }) {
 
       {kpi.reference_sources.length > 0 && (
         <div className="mt-3">
-          <span className="text-xs text-gray-400">Sources:</span>
-          <ul className="mt-1 list-disc list-inside text-xs text-gray-500">
+          <span className="text-xs text-[#707070]">Sources:</span>
+          <ul className="mt-1 list-disc list-inside text-xs text-[#707070]">
             {kpi.reference_sources.map((src, i) => (
               <li key={i}>{src}</li>
             ))}
@@ -88,8 +88,8 @@ export default async function MethodologiesPage() {
 
   if (error) {
     return (
-      <main className="max-w-4xl mx-auto px-6 py-12">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <main className="max-w-4xl mx-auto px-12 py-12">
+        <div className="rounded-lg border border-red-900/50 bg-red-950/50 p-4 text-sm text-red-400">
           {error.message}
         </div>
       </main>
@@ -97,26 +97,26 @@ export default async function MethodologiesPage() {
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+    <main className="max-w-4xl mx-auto px-12 py-12">
+      <h1 className="text-4xl font-light tracking-tight text-white">
         Methodologies
       </h1>
-      <p className="mt-2 text-gray-500">
+      <p className="mt-2 text-[#a8a8a8]">
         How we evaluate ROI. Each methodology defines what metrics to assess and
         provides guidance for company-specific impact analysis.
       </p>
 
       {(methodologies ?? []).map((m: Methodology) => (
         <div key={m.id} className="mt-8">
-          <div className="border border-gray-200 rounded-lg bg-white p-6">
+          <div className="border border-[#2a2a2a] rounded-lg bg-[#111111] p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">{m.name}</h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <h2 className="text-xl font-semibold text-white">{m.name}</h2>
+                <p className="mt-1 text-sm text-[#707070]">
                   v{m.version} &middot; {m.service_type.replace(/-/g, " ")}
                 </p>
                 {m.description && (
-                  <p className="mt-2 text-sm text-gray-600">{m.description}</p>
+                  <p className="mt-2 text-sm text-[#a8a8a8]">{m.description}</p>
                 )}
               </div>
             </div>
@@ -128,24 +128,24 @@ export default async function MethodologiesPage() {
             </div>
 
             {/* Realization Curve */}
-            <div className="mt-6 border-t border-gray-100 pt-5">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+            <div className="mt-6 border-t border-[#2a2a2a] pt-5">
+              <h3 className="text-sm font-semibold text-[#707070] uppercase tracking-wide">
                 Realization Curve
               </h3>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-[#707070]">
                 Percentage of total impact realized each year
               </p>
               <div className="mt-3 flex gap-4">
                 {m.realization_curve.map((pct, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">Year {i + 1}:</span>
-                    <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <span className="text-sm text-[#707070]">Year {i + 1}:</span>
+                    <div className="w-24 h-2 bg-[#2a2a2a] rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-blue-500 rounded-full"
+                        className="h-full bg-white rounded-full"
                         style={{ width: `${pct * 100}%` }}
                       />
                     </div>
-                    <span className="text-sm font-medium text-gray-700">{(pct * 100).toFixed(0)}%</span>
+                    <span className="text-sm font-medium text-white">{(pct * 100).toFixed(0)}%</span>
                   </div>
                 ))}
               </div>
@@ -154,7 +154,7 @@ export default async function MethodologiesPage() {
 
           {/* KPIs */}
           <div className="mt-6">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
+            <h3 className="text-sm font-semibold text-[#707070] uppercase tracking-wide mb-4">
               KPI Definitions ({m.kpis.length})
             </h3>
             <div className="space-y-4">

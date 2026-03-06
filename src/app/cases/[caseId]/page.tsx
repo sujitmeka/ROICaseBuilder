@@ -55,19 +55,19 @@ export default function CasePage() {
   // Results view — show when calculation data is available
   if (results) {
     return (
-      <main className="min-h-screen bg-gray-50">
+      <main className="min-h-screen bg-black">
         {/* Sticky header with hero metrics */}
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-200">
+        <div className="sticky top-0 z-10 bg-black/95 backdrop-blur border-b border-[#2a2a2a]">
           <div className="max-w-5xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between mb-4">
-              <h1 className="text-lg font-semibold text-gray-900">
+              <h1 className="text-lg font-semibold text-white">
                 ROI Case: {results.company_name}
               </h1>
               <div className="flex items-center gap-3">
                 {activeTab === "results" && <ScenarioToggle />}
                 {isConnected ? (
-                  <span className="flex items-center gap-1.5 text-xs text-blue-600">
-                    <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="flex items-center gap-1.5 text-xs text-white">
+                    <span className="inline-block h-2 w-2 rounded-full bg-white animate-pulse" />
                     Updating
                   </span>
                 ) : null}
@@ -88,7 +88,7 @@ export default function CasePage() {
         {/* Tab navigation */}
         <div className="max-w-4xl mx-auto px-6 pt-6">
           <div
-            className="inline-flex rounded-lg border bg-gray-100 p-1"
+            className="inline-flex rounded-lg border border-[#2a2a2a] bg-[#111111] p-1"
             role="tablist"
             aria-label="View selector"
           >
@@ -100,8 +100,8 @@ export default function CasePage() {
                 onClick={() => setActiveTab(tab.value)}
                 className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                   activeTab === tab.value
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-900"
+                    ? "bg-white text-black shadow-sm"
+                    : "text-[#707070] hover:text-white"
                 }`}
               >
                 {tab.label}
@@ -128,13 +128,13 @@ export default function CasePage() {
 
   // Streaming progress view — show while pipeline is running
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-black">
       <div className="max-w-2xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
-          <h1 className="text-2xl font-semibold text-gray-900">
+          <h1 className="text-2xl font-semibold text-white">
             {companyName ? `Analyzing ${companyName}` : "Analyzing ROI Case"}
           </h1>
-          <p className="mt-2 text-gray-500">
+          <p className="mt-2 text-[#a8a8a8]">
             {connectionStatus === "connecting"
               ? "Connecting to analysis pipeline..."
               : connectionStatus === "connected"
@@ -142,9 +142,9 @@ export default function CasePage() {
               : "Waiting for connection..."}
           </p>
           {error ? (
-            <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 text-left">
-              <p className="text-red-800 text-sm font-medium">Analysis Error</p>
-              <p className="text-red-600 text-sm mt-1">{error}</p>
+            <div className="mt-6 bg-red-950/50 border border-red-900/50 rounded-lg p-4 text-left">
+              <p className="text-red-400 text-sm font-medium">Analysis Error</p>
+              <p className="text-red-400 text-sm mt-1">{error}</p>
             </div>
           ) : null}
         </div>

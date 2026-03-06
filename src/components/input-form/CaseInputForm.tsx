@@ -86,7 +86,7 @@ export function CaseInputForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div>
-        <label htmlFor="companyName" className="block text-sm font-medium mb-1">
+        <label htmlFor="companyName" className="block text-sm font-medium text-[#a8a8a8] mb-1">
           Company Name
         </label>
         <CompanyAutocomplete
@@ -94,14 +94,14 @@ export function CaseInputForm() {
           onChange={(val) => setValue("companyName", val)}
         />
         {errors.companyName && (
-          <p className="mt-1 text-sm text-red-600">
+          <p className="mt-1 text-sm text-red-400">
             {errors.companyName.message}
           </p>
         )}
       </div>
 
       <div>
-        <label htmlFor="serviceType" className="block text-sm font-medium mb-1">
+        <label htmlFor="serviceType" className="block text-sm font-medium text-[#a8a8a8] mb-1">
           Service Type
         </label>
         <ServiceTypeSelect
@@ -113,7 +113,7 @@ export function CaseInputForm() {
           }
         />
         {errors.serviceType && (
-          <p className="mt-1 text-sm text-red-600">
+          <p className="mt-1 text-sm text-red-400">
             {errors.serviceType.message}
           </p>
         )}
@@ -122,12 +122,12 @@ export function CaseInputForm() {
       <div>
         <label
           htmlFor="estimatedProjectCost"
-          className="block text-sm font-medium mb-1"
+          className="block text-sm font-medium text-[#a8a8a8] mb-1"
         >
           Estimated Project Cost
         </label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#707070] text-sm">
             $
           </span>
           <input
@@ -137,21 +137,21 @@ export function CaseInputForm() {
             step="any"
             placeholder="e.g. 500000"
             {...register("estimatedProjectCost", { valueAsNumber: true })}
-            className="w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-sm border border-[#2a2a2a] bg-[#0a0a0a] pl-7 pr-3 py-2 text-sm text-white placeholder:text-[#707070] focus:border-white focus:ring-1 focus:ring-white focus:outline-none"
           />
         </div>
         {errors.estimatedProjectCost && (
-          <p className="mt-1 text-sm text-red-600">
+          <p className="mt-1 text-sm text-red-400">
             {errors.estimatedProjectCost.message}
           </p>
         )}
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1">
-          Project Context <span className="text-gray-400 font-normal">(recommended)</span>
+        <label className="block text-sm font-medium text-[#a8a8a8] mb-1">
+          Project Context <span className="text-[#707070] font-normal">(recommended)</span>
         </label>
-        <p className="text-xs text-gray-500 mb-1">
+        <p className="text-xs text-[#707070] mb-1">
           Describe the engagement: which part of the business, what customer journey, what problems you{"'"}re solving.
         </p>
         <textarea
@@ -159,30 +159,30 @@ export function CaseInputForm() {
           rows={4}
           maxLength={5000}
           placeholder="e.g. Nike wants to redesign their mobile checkout experience to reduce cart abandonment. The engagement focuses on the direct-to-consumer digital channel..."
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-y"
+          className="w-full rounded-sm border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-[#707070] focus:border-white focus:ring-1 focus:ring-white focus:outline-none resize-y"
         />
         {errors.projectContext && (
-          <p className="mt-1 text-sm text-red-600">{errors.projectContext.message}</p>
+          <p className="mt-1 text-sm text-red-400">{errors.projectContext.message}</p>
         )}
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1">
-          Upload RFP or Brief <span className="text-gray-400 font-normal">(optional)</span>
+        <label className="block text-sm font-medium text-[#a8a8a8] mb-1">
+          Upload RFP or Brief <span className="text-[#707070] font-normal">(optional)</span>
         </label>
-        <p className="text-xs text-gray-500 mb-1">
+        <p className="text-xs text-[#707070] mb-1">
           Upload a PDF or Word document for additional context. The AI will extract and use its content.
         </p>
         {uploadedFile ? (
-          <div className="flex items-center gap-2 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm">
-            <span className="text-green-700">{uploadedFile.fileName}</span>
+          <div className="flex items-center gap-2 rounded-sm border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-sm">
+            <span className="text-white">{uploadedFile.fileName}</span>
             <button
               type="button"
               onClick={() => {
                 setUploadedFile(null);
                 setValue("documentContent", undefined);
               }}
-              className="ml-auto text-gray-400 hover:text-gray-600 text-xs"
+              className="ml-auto text-[#707070] hover:text-white text-xs"
             >
               Remove
             </button>
@@ -196,15 +196,15 @@ export function CaseInputForm() {
               const file = e.target.files?.[0];
               if (file) handleFileUpload(file);
             }}
-            className="w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+            className="w-full text-sm text-[#a8a8a8] file:mr-3 file:rounded-sm file:border file:border-[#2a2a2a] file:bg-[#111111] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-[#1a1a1a] disabled:opacity-50"
           />
         )}
-        {isUploading && <p className="mt-1 text-xs text-blue-600">Extracting document text...</p>}
-        {uploadError && <p className="mt-1 text-sm text-red-600">{uploadError}</p>}
+        {isUploading && <p className="mt-1 text-xs text-[#a8a8a8]">Extracting document text...</p>}
+        {uploadError && <p className="mt-1 text-sm text-red-400">{uploadError}</p>}
       </div>
 
       {submitError && (
-        <p className="text-sm text-red-600 bg-red-50 rounded-md p-3">
+        <p className="text-sm text-red-400 bg-red-950/50 border border-red-900/50 rounded-sm p-3">
           {submitError}
         </p>
       )}
@@ -212,7 +212,7 @@ export function CaseInputForm() {
       <button
         type="submit"
         disabled={isSubmitting || isPending || isUploading}
-        className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full rounded-sm bg-white px-4 py-2 text-sm font-medium text-black hover:bg-[#e0e0e0] disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isSubmitting ? "Starting analysis..." : isPending ? "Navigating..." : "Generate ROI Case"}
       </button>

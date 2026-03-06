@@ -14,27 +14,27 @@ function Table({
   rows: string[][];
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+    <div className="overflow-x-auto rounded-lg border border-[#2a2a2a] bg-[#111111]">
       <table className="min-w-full text-sm">
         <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
+          <tr className="bg-[#0a0a0a] border-b border-[#2a2a2a]">
             {headers.map((h, i) => (
               <th
                 key={i}
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                className="px-4 py-3 text-left text-xs font-semibold text-[#707070] uppercase tracking-wide"
               >
                 {h}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-[#2a2a2a]">
           {rows.map((row, i) => (
-            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
+            <tr key={i} className={i % 2 === 0 ? "bg-[#111111]" : "bg-[#0a0a0a]"}>
               {row.map((cell, j) => (
                 <td
                   key={j}
-                  className={`px-4 py-3 text-gray-700 ${j === 0 ? "font-medium text-gray-900" : ""}`}
+                  className={`px-4 py-3 text-[#a8a8a8] ${j === 0 ? "font-medium text-white" : ""}`}
                 >
                   {cell}
                 </td>
@@ -53,7 +53,7 @@ function Table({
 
 function SectionHeader({ title }: { title: string }) {
   return (
-    <h3 className="text-base font-semibold text-gray-900 mt-8 mb-3 first:mt-0">
+    <h3 className="text-base font-semibold text-white mt-8 mb-3 first:mt-0">
       {title}
     </h3>
   );
@@ -66,7 +66,7 @@ function SectionHeader({ title }: { title: string }) {
 function BackboneViewInner() {
   return (
     <div className="space-y-2">
-      <p className="text-sm text-gray-500 leading-relaxed mb-6">
+      <p className="text-sm text-[#a8a8a8] leading-relaxed mb-6">
         The framework that powers every ROI analysis. The LLM follows this process
         end-to-end, with the calculation engine acting as a pure arithmetic validator.
       </p>

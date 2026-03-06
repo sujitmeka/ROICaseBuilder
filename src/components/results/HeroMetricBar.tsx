@@ -43,11 +43,11 @@ export function HeroMetricBar({
       aria-label="Key ROI metrics"
     >
       {metrics.map((metric) => (
-        <div key={metric.label} className="rounded-lg border bg-white p-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+        <div key={metric.label} className="rounded-lg border border-[#2a2a2a] bg-[#111111] p-4">
+          <p className="text-xs font-medium text-[#707070] uppercase tracking-wide">
             {metric.label}
           </p>
-          <p className="text-2xl font-bold mt-1">{metric.value}</p>
+          <p className="text-2xl font-bold text-white mt-1">{metric.value}</p>
         </div>
       ))}
     </div>

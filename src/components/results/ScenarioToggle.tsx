@@ -14,7 +14,7 @@ export function ScenarioToggle() {
 
   return (
     <div
-      className="inline-flex rounded-lg border bg-gray-100 p-1"
+      className="inline-flex rounded-lg border border-[#2a2a2a] bg-[#111111] p-1"
       role="radiogroup"
       aria-label="Scenario selector"
     >
@@ -26,8 +26,8 @@ export function ScenarioToggle() {
           onClick={() => setActiveScenario(scenario.value)}
           className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
             activeScenario === scenario.value
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-900"
+              ? "bg-white text-black shadow-sm"
+              : "text-[#707070] hover:text-white"
           }`}
         >
           {scenario.label}
