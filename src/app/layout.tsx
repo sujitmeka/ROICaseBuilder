@@ -38,6 +38,12 @@ export default function RootLayout({
                 ROI Builder
               </Link>
               <Link
+                href="/backbone"
+                className="text-[13px] font-medium uppercase tracking-[0.15em] text-[#a8a8a8] hover:text-white transition-colors"
+              >
+                Backbone
+              </Link>
+              <Link
                 href="/methodologies"
                 className="text-[13px] font-medium uppercase tracking-[0.15em] text-[#a8a8a8] hover:text-white transition-colors"
               >
