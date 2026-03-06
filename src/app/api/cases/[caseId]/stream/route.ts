@@ -58,7 +58,7 @@ export async function POST(
   // Look up the case to get inputs
   const { data: caseRow, error: lookupError } = await supabase
     .from("cases")
-    .select("company_name, industry, company_type, estimated_project_cost, estimated_implementation_cost, service_type, status")
+    .select("company_name, estimated_project_cost, service_type, project_context, document_content, status")
     .eq("id", caseId)
     .single();
 
@@ -95,11 +95,10 @@ export async function POST(
   // Create the pipeline stream
   const { stream, resultPromise } = createPipelineStream({
     companyName: caseRow.company_name,
-    industry: caseRow.industry,
-    companyType: caseRow.company_type ?? "public",
     estimatedProjectCost: caseRow.estimated_project_cost,
-    estimatedImplementationCost: caseRow.estimated_implementation_cost ?? undefined,
     serviceType: caseRow.service_type,
+    projectContext: caseRow.project_context ?? undefined,
+    documentContent: caseRow.document_content ?? undefined,
     caseId,
   });
 

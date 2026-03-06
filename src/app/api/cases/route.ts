@@ -26,11 +26,10 @@ export async function POST(request: NextRequest) {
     .from("cases")
     .insert({
       company_name: parsed.data.companyName,
-      industry: parsed.data.industryVertical,
-      company_type: parsed.data.companyType,
       estimated_project_cost: parsed.data.estimatedProjectCost,
-      estimated_implementation_cost: parsed.data.estimatedImplementationCost ?? null,
       service_type: parsed.data.serviceType,
+      project_context: parsed.data.projectContext ?? null,
+      document_content: parsed.data.documentContent ?? null,
       methodology_id: "experience-transformation-design",
       status: "started",
     })

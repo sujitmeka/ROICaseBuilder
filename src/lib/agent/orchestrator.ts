@@ -110,13 +110,16 @@ function summarizeToolCall(
 // System Prompt
 // ---------------------------------------------------------------------------
 
-function getSystemPrompt(companyType: "public" | "private", skillsPrompt: string): string {
+function getSystemPrompt(skillsPrompt: string): string {
   const today = new Date().toISOString().split("T")[0];
   const year = new Date().getFullYear();
 
-  const dataStrategy = companyType === "public"
-    ? `## Data Strategy: PUBLIC Company
+  const dataStrategy = `## Data Strategy
 
+**First, determine whether this is a public or private company.** Search for SEC filings
+or Crunchbase presence to confirm. Then follow the appropriate strategy below.
+
+### Public Companies
 Use the financial_data tool as your PRIMARY data source. It searches 6 Valyu datasets:
 SEC filings, earnings, balance sheets, income statements, cash flow, and statistics.
 Date range defaults to the last 18 months → today (wide enough to capture annual 10-K filings). You can override dates if needed.
@@ -135,23 +138,24 @@ Always check for more recent 10-Q filings to supplement the annual data.
 **Be specific.** Each query costs money. Ask for exactly the metrics you need in one query
 rather than making broad searches. Include the company name and metric in every query.
 
-- **financial_data** — SEC filings, earnings, balance sheets, income statements, cash flow, statistics.
-  Automatically filtered to last 18 months. Override start_date for older filings.
-- **company_research** — Broad company intelligence overview (use sparingly, it's expensive).
+Do NOT search for crypto, forex, economic indicators, or market movers — these are irrelevant.
 
-Do NOT search for crypto, forex, economic indicators, or market movers — these are irrelevant.`
-    : `## Data Strategy: PRIVATE Company
-
-This is a private company — SEC filings and public financial data are not available.
+### Private Companies
+SEC filings and public financial data are not available for private companies.
 Use Firecrawl and Valyu to gather what data exists:
-- **company_research** — Try this first for any available company intelligence.
 - **scrape** — Scrape specific pages (Crunchbase, PitchBook, company website) for data.
   Use URLs like "https://www.crunchbase.com/organization/{company-slug}".
 - **extract** — Extract structured data from webpages with a natural language prompt.
 - **firecrawl_search** — Search the web for company information via Firecrawl.
 
 Data from private companies has lower confidence. Set confidence_tier to "estimated"
-and confidence_score to 0.5 or lower for scraped/estimated values.`;
+and confidence_score to 0.5 or lower for scraped/estimated values.
+
+### Available for Both
+- **financial_data** — SEC filings, earnings, balance sheets, income statements, cash flow, statistics.
+  Automatically filtered to last 18 months. Override start_date for older filings.
+- **company_research** — Broad company intelligence overview (use sparingly, it's expensive).
+- **web_search** — Industry benchmarks, analyst reports, CX research.`;
 
   return `You are a senior financial analyst specializing in experience design ROI.
 You produce company-specific impact estimates that a Client Partner (CP) can
@@ -159,7 +163,7 @@ confidently present to their client. Your analysis must be defensible — every
 number traces to a source, every assumption is justified, and the reasoning
 reflects this specific company's situation, not generic industry averages.
 
-Today is ${today}. This is a **${companyType.toUpperCase()}** company.
+Today is ${today}.
 Prefer ${year} or ${year - 1} data. Do not cite older data unless nothing recent exists.
 
 ## Tools
@@ -197,6 +201,13 @@ grounded because the base was scoped to what the engagement actually touches.
 ## Process
 
 ### Step 1: Understand the engagement & load methodology
+First, determine:
+- **Company type**: Is this a public or private company? Search for SEC filings or Crunchbase to confirm.
+- **Industry vertical**: What industry does this company operate in? Use the company name and any project context provided.
+- **Engagement scope**: What specific part of the business does this engagement target? Use the project context and any uploaded document content.
+
+Write these determinations before proceeding.
+
 Call load_methodology first. Then reason about:
 
 **What the methodology tells you:**
@@ -466,17 +477,16 @@ export interface OrchestratorResult {
 
 export function createPipelineStream(params: {
   companyName: string;
-  industry: string;
-  companyType: "public" | "private";
   estimatedProjectCost: number;
-  estimatedImplementationCost?: number;
   serviceType: string;
   caseId: string;
+  projectContext?: string;
+  documentContent?: string;
 }): {
   stream: ReadableStream;
   resultPromise: Promise<OrchestratorResult>;
 } {
-  const { companyName, industry, companyType, estimatedProjectCost, estimatedImplementationCost, serviceType, caseId } = params;
+  const { companyName, estimatedProjectCost, serviceType, caseId, projectContext, documentContent } = params;
 
   // Deferred promise — resolved when stream completes, rejected on error.
   // Using manual pattern for Node 20 compatibility (Promise.withResolvers requires Node 22+).
@@ -493,21 +503,25 @@ export function createPipelineStream(params: {
     maximumFractionDigits: 0,
   }).format(estimatedProjectCost);
 
-  const implCostNote = estimatedImplementationCost
-    ? `The client has estimated total implementation cost at $${estimatedImplementationCost.toLocaleString()}.`
-    : `No implementation cost was provided — you must estimate it yourself based on the company's scale, organizational complexity, and what implementation actually requires for a company of this size.`;
-
-  const userTask =
-    `Analyze the ROI case for ${companyName} in the ${industry} industry ` +
-    `using the ${serviceType} methodology.\n\n` +
+  let userTask = `Analyze the ROI case for ${companyName} using the ${serviceType} methodology.\n\n` +
     `The estimated project cost (engagement/consulting fee) is ${formattedCost}.\n` +
-    `${implCostNote}\n\n` +
-    `Follow the 9-step process in your instructions. Key steps:\n` +
-    `1. Load methodology (service_type: "${serviceType}")\n` +
-    `2. Load the service-specific skill if available\n` +
-    `3. Gather financial data and scope the addressable base\n` +
-    `4. Do your own calculations, then call validate_calculation to verify\n` +
-    `5. Write the narrative\n\n` +
+    `You must estimate the total implementation cost yourself based on the company's scale, organizational complexity, and what implementation actually requires.\n\n`;
+
+  if (projectContext) {
+    userTask += `## Project Context from the Client Partner\n${projectContext}\n\n`;
+  }
+
+  if (documentContent) {
+    userTask += `## Uploaded Document Content\n${documentContent}\n\n`;
+  }
+
+  userTask += `Follow the 9-step process in your instructions. Key steps:\n` +
+    `1. Determine company type (public/private) and industry vertical\n` +
+    `2. Load methodology (service_type: "${serviceType}")\n` +
+    `3. Load the service-specific skill if available\n` +
+    `4. Gather financial data and scope the addressable base\n` +
+    `5. Do your own calculations, then call validate_calculation to verify\n` +
+    `6. Write the narrative\n\n` +
     `The exact service_type slug for load_methodology is "${serviceType}".`;
 
   let scenarios: Record<string, unknown> = {};
@@ -520,7 +534,7 @@ export function createPipelineStream(params: {
         writer.write({
           type: "data-caseinfo",
           id: "case-info",
-          data: { companyName, industry, serviceType, caseId },
+          data: { companyName, serviceType, caseId },
         });
 
         // Emit pipeline started
@@ -546,7 +560,7 @@ export function createPipelineStream(params: {
 
         const result = streamText({
           model: anthropic("claude-opus-4-6"),
-          system: getSystemPrompt(companyType, skillsPrompt),
+          system: getSystemPrompt(skillsPrompt),
           messages: [{ role: "user", content: userTask }],
           providerOptions: {
             anthropic: {
@@ -558,17 +572,13 @@ export function createPipelineStream(params: {
             ...tools,
             // Service-specific skill loading
             ...(skills.length > 0 && { load_skill: createLoadSkillTool(skills) }),
-            // Valyu financial data — restricted to 6 datasets with date guardrails (public companies only)
-            ...(companyType === "public" && {
-              financial_data: financialData({ maxNumResults: 5 }),
-            }),
-            // Firecrawl tools — web scraping (private companies only)
-            ...(companyType === "private" && {
-              scrape: scrapeTool,
-              extract: extractTool,
-              firecrawl_search: searchTool,
-            }),
-            // Available for both — general company intel + web search + benchmarks
+            // Valyu financial data — restricted to 6 datasets with date guardrails
+            financial_data: financialData({ maxNumResults: 5 }),
+            // Firecrawl tools — web scraping
+            scrape: scrapeTool,
+            extract: extractTool,
+            firecrawl_search: searchTool,
+            // General company intel + web search + benchmarks
             company_research: companyResearch(),
             web_search: anthropic.tools.webSearch_20250305({ maxUses: 10 }),
           },

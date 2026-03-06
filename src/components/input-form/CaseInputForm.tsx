@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { caseInputSchema, type CaseInput } from "../../lib/schemas";
 import { CompanyAutocomplete } from "./CompanyAutocomplete";
-import { IndustrySelect } from "./IndustrySelect";
 import { ServiceTypeSelect } from "./ServiceTypeSelect";
 
 export function CaseInputForm() {
@@ -14,6 +13,9 @@ export function CaseInputForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ fileName: string; fileType: string } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const {
     register,
@@ -25,18 +27,38 @@ export function CaseInputForm() {
     resolver: zodResolver(caseInputSchema),
     defaultValues: {
       companyName: "",
-      industryVertical: undefined,
-      companyType: "public",
       serviceType: "experience-transformation-design",
+      projectContext: "",
     },
   });
 
   // Register fields that use custom components (setValue pattern).
   // estimatedProjectCost uses a native <input> with {...register()} spread, so skip it here.
   register("companyName");
-  register("industryVertical");
-  register("companyType");
   register("serviceType");
+
+  async function handleFileUpload(file: File) {
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Upload failed");
+      }
+      const { text, fileName, fileType } = await res.json();
+      setValue("documentContent", text);
+      setUploadedFile({ fileName, fileType });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setValue("documentContent", undefined);
+      setUploadedFile(null);
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   async function onSubmit(data: CaseInput) {
     setIsSubmitting(() => true);
@@ -74,56 +96,6 @@ export function CaseInputForm() {
         {errors.companyName && (
           <p className="mt-1 text-sm text-red-600">
             {errors.companyName.message}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium mb-2">
-          Company Type
-        </label>
-        <div className="flex gap-2">
-          {(["public", "private"] as const).map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => setValue("companyType", type)}
-              className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                watch("companyType") === type
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              {type === "public" ? "Public" : "Private"}
-            </button>
-          ))}
-        </div>
-        {errors.companyType && (
-          <p className="mt-1 text-sm text-red-600">
-            {errors.companyType.message}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label
-          htmlFor="industryVertical"
-          className="block text-sm font-medium mb-1"
-        >
-          Industry Vertical
-        </label>
-        <IndustrySelect
-          value={watch("industryVertical")}
-          onChange={(val) =>
-            setValue(
-              "industryVertical",
-              val as CaseInput["industryVertical"]
-            )
-          }
-        />
-        {errors.industryVertical && (
-          <p className="mt-1 text-sm text-red-600">
-            {errors.industryVertical.message}
           </p>
         )}
       </div>
@@ -176,35 +148,59 @@ export function CaseInputForm() {
       </div>
 
       <div>
-        <label
-          htmlFor="estimatedImplementationCost"
-          className="block text-sm font-medium mb-1"
-        >
-          Estimated Implementation Cost{" "}
-          <span className="text-gray-400 font-normal">(optional)</span>
+        <label className="block text-sm font-medium mb-1">
+          Project Context <span className="text-gray-400 font-normal">(recommended)</span>
         </label>
         <p className="text-xs text-gray-500 mb-1">
-          Total cost to implement recommendations. Auto-estimated if blank.
+          Describe the engagement: which part of the business, what customer journey, what problems you{"'"}re solving.
         </p>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-            $
-          </span>
-          <input
-            id="estimatedImplementationCost"
-            type="number"
-            min="1"
-            step="any"
-            placeholder="Auto-estimated if blank"
-            {...register("estimatedImplementationCost", { valueAsNumber: true })}
-            className="w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-        {errors.estimatedImplementationCost && (
-          <p className="mt-1 text-sm text-red-600">
-            {errors.estimatedImplementationCost.message}
-          </p>
+        <textarea
+          {...register("projectContext")}
+          rows={4}
+          maxLength={5000}
+          placeholder="e.g. Nike wants to redesign their mobile checkout experience to reduce cart abandonment. The engagement focuses on the direct-to-consumer digital channel..."
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-y"
+        />
+        {errors.projectContext && (
+          <p className="mt-1 text-sm text-red-600">{errors.projectContext.message}</p>
         )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          Upload RFP or Brief <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <p className="text-xs text-gray-500 mb-1">
+          Upload a PDF or Word document for additional context. The AI will extract and use its content.
+        </p>
+        {uploadedFile ? (
+          <div className="flex items-center gap-2 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm">
+            <span className="text-green-700">{uploadedFile.fileName}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setUploadedFile(null);
+                setValue("documentContent", undefined);
+              }}
+              className="ml-auto text-gray-400 hover:text-gray-600 text-xs"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <input
+            type="file"
+            accept=".pdf,.docx"
+            disabled={isUploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileUpload(file);
+            }}
+            className="w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+          />
+        )}
+        {isUploading && <p className="mt-1 text-xs text-blue-600">Extracting document text...</p>}
+        {uploadError && <p className="mt-1 text-sm text-red-600">{uploadError}</p>}
       </div>
 
       {submitError && (
@@ -215,7 +211,7 @@ export function CaseInputForm() {
 
       <button
         type="submit"
-        disabled={isSubmitting || isPending}
+        disabled={isSubmitting || isPending || isUploading}
         className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isSubmitting ? "Starting analysis..." : isPending ? "Navigating..." : "Generate ROI Case"}
